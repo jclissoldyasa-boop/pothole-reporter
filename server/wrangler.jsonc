@@ -1,0 +1,16 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "pothole-reporter",
+  "main": "src/worker.js",
+  "compatibility_date": "2026-09-01",
+  // Daily clean-up of rate-limit counters.
+  "triggers": { "crons": ["23 16 * * *"] },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "pothole-reporter",
+      "database_id": "21e31044-4870-4ae2-8711-f8209b995946",
+      "migrations_dir": "migrations"
+    }
+  ]
+}

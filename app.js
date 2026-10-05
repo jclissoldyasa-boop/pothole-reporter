@@ -2,12 +2,14 @@
   "use strict";
   const TO="enquiries@roads.vic.gov.au";
   const DIRS=[["N","Northbound"],["NE","North-east"],["E","Eastbound"],["SE","South-east"],["S","Southbound"],["SW","South-west"],["W","Westbound"],["NW","North-west"]];
-  const POS=["Left lane","Right lane","Middle lane","Shoulder","All lanes"];
-  const SIZE=["Small","Medium","Large / deep"];
+  const POS=["Left wheel track","Centre of lane","Right wheel track","Shoulder","Across the lane"];
+  const SIZE=["Small","Medium","Large / deep","Deep enough to drop a bike"];
+  // Shared riders' map. Local copies of the app talk to `wrangler dev`.
+  const API=/^(localhost|127\.0\.0\.1)$/.test(location.hostname)?"http://localhost:8787":"https://pothole-reporter.drivemate-app.workers.dev";
   const $=id=>document.getElementById(id);
   const LS="pothole_reporter_v1";
   const MELTON="City of Melton";
-  const DEFAULT={me:{name:"",phone:"",email:""},councils:{},suburbCouncil:{},queue:[],history:[]};
+  const DEFAULT={me:{name:"",phone:"",email:"",share:true},councils:{},unshare:[],stats:null,suburbCouncil:{},queue:[],history:[]};
 
   let S=(function(){try{const v=JSON.parse(localStorage.getItem(LS));if(v&&v.me)return{...DEFAULT,...v,me:{...DEFAULT.me,...v.me}}}catch(e){}return JSON.parse(JSON.stringify(DEFAULT))})();
   // Older versions kept one council email (it was always Melton's).
@@ -113,7 +115,7 @@
     $("lookupBtn").disabled=false;$("lookupBtn").textContent="Retry lookups";
   }
   $("lookupBtn").onclick=lookupMissing;
-  window.addEventListener("online",lookupMissing);
+  window.addEventListener("online",()=>{lookupMissing();shareMissing();flushUnshare()});
 
   // ---------- details ----------
   [["myName","name"],["myPhone","phone"],["myEmail","email"]].forEach(([el,k])=>{
@@ -170,7 +172,7 @@
     const item={id:Date.now().toString(36)+Math.random().toString(36).slice(2,5),lat:f.lat.toFixed(6),lng:f.lng.toFixed(6),acc:Math.round(f.acc),
       bearing:b==null?null:Math.round(b),dir:b==null?"":toCode(b),time:new Date(tappedAt).toISOString(),
       road:"",suburb:"",postcode:"",near:"",pos:"",size:"",auth:"check",why:"Looking up road…",lookup:"pending"};
-    S.queue.push(item);save();renderQueue();
+    S.queue.push(item);save();renderQueue();shareOne(item);
     if(navigator.vibrate)try{navigator.vibrate([60,40,60])}catch(e){}
     setStatus("Logged. Looking up the road…");
     lookup(item).then(()=>{
@@ -200,6 +202,7 @@
       ?"Pothole hazard"+(items[0].road?" – "+items[0].road:"")+(items[0].suburb?", "+items[0].suburb:"")
       :"Pothole hazards – "+items.length+" locations"+(subs.length===1?" – "+subs[0]:"");
     const body=["Hi,","",items.length===1?"I'd like to report a pothole hazard:":"I'd like to report the following pothole hazards:","",
+      "Potholes like these are a serious danger to motorcyclists, so I'd appreciate them being looked at quickly.","",
       items.map((q,i)=>itemText(q,items.length>1?i+1:0)).join("\n\n"),"","Each map link opens the exact location.","","Thanks,",
       [S.me.name,S.me.phone,S.me.email].filter(Boolean).join("\n")].join("\n");
     return{subject,body};
@@ -224,6 +227,7 @@
   $("confirmYes").onclick=()=>{
     if(!pending)return;
     const items=S.queue.filter(q=>pending.ids.includes(q.id));
+    items.forEach(shareOne);
     S.queue=S.queue.filter(q=>!pending.ids.includes(q.id));
     S.history.unshift({at:new Date().toISOString(),count:items.length,to:pending.label,subject:pending.subject});
     S.history=S.history.slice(0,50);
@@ -350,9 +354,13 @@
   function removeReports(ids){
     const gone=S.queue.map((q,i)=>[i,q]).filter(([,q])=>ids.includes(q.id));
     if(!gone.length)return;
+    const after=Date.now()+7000;
+    gone.forEach(([,q])=>{q.deleted=true;if(q.mapId)S.unshare.push({id:q.mapId,key:q.mapKey,ref:q.id,after})});
     S.queue=S.queue.filter(q=>!ids.includes(q.id));save();renderQueue();renderCouncils();
+    setTimeout(flushUnshare,7500);
     toast(gone.length===1?"Report deleted":gone.length+" reports deleted",()=>{
-      gone.forEach(([i,q])=>{if(!S.queue.some(x=>x.id===q.id))S.queue.splice(Math.min(i,S.queue.length),0,q)});
+      gone.forEach(([i,q])=>{q.deleted=false;if(!S.queue.some(x=>x.id===q.id))S.queue.splice(Math.min(i,S.queue.length),0,q)});
+      S.unshare=S.unshare.filter(u=>!gone.some(([,q])=>q.id===u.ref));
       save();renderQueue();renderCouncils();
     });
   }
@@ -382,8 +390,100 @@
     toast("Sent list cleared",()=>{S.history=old.concat(S.history).slice(0,50);save();renderHistory()});
   };
 
-  S.queue.forEach(q=>{if(q.lookup==="pending")q.lookup="failed"});
-  renderQueue();renderCouncils();renderHistory();save();
+  S.queue.forEach(q=>{if(q.lookup==="pending")q.lookup="failed";delete q.sharing});
+  // ---------- riders' map: sharing ----------
+  // Only the spot goes up. The server keeps the day, and hands back a key so this phone can take it down again.
+  async function shareOne(q){
+    if(!S.me.share||q.mapId||q.sharing||(q.shareFail||0)>=3||!navigator.onLine)return;
+    q.sharing=true;
+    try{
+      const r=await fetch(API+"/api/potholes",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({lat:+q.lat,lng:+q.lng})});
+      if(r.status===400){q.shareFail=3;return}
+      if(!r.ok)throw new Error("http "+r.status);
+      const d=await r.json();q.mapId=d.id;q.mapKey=d.key;setStats(d);
+      if(q.deleted){S.unshare.push({id:d.id,key:d.key,ref:q.id,after:0});flushUnshare()}
+      if(mapObj&&$("mapBox").open)loadPoints();
+    }catch(e){q.shareFail=(q.shareFail||0)+1}
+    finally{delete q.sharing;save()}
+  }
+  function shareMissing(){S.queue.forEach(shareOne)}
+  let flushing=false;
+  async function flushUnshare(){
+    if(flushing||!navigator.onLine)return;flushing=true;
+    try{
+      for(const u of S.unshare.filter(u=>Date.now()>=u.after)){
+        try{
+          const r=await fetch(API+"/api/potholes/"+encodeURIComponent(u.id),{method:"DELETE",headers:{"X-Delete-Key":u.key}});
+          if(r.ok||r.status===401||r.status===404){S.unshare=S.unshare.filter(x=>x!==u);if(r.ok)setStats(await r.json())}
+        }catch(e){break}
+      }
+      save();
+    }finally{flushing=false}
+  }
+  $("shareMap").checked=S.me.share!==false;
+  $("shareMap").onchange=()=>{S.me.share=$("shareMap").checked;save();if(S.me.share){S.queue.forEach(q=>{q.shareFail=0});shareMissing()}};
+
+  // ---------- global counter ----------
+  function setStats(d){if(d&&typeof d.total==="number"){S.stats={total:d.total,week:d.week||0};save();renderStats()}}
+  function renderStats(){
+    const s=S.stats;$("gcTotal").textContent=s?s.total.toLocaleString("en-AU"):"–";
+    $("gcWeek").textContent=s&&s.week?s.week.toLocaleString("en-AU")+" this week":"";
+  }
+  async function fetchStats(){try{const r=await fetch(API+"/api/stats");if(r.ok)setStats(await r.json())}catch(e){}}
+
+  // ---------- riders' map: viewing ----------
+  let mapObj=null,mapLayer=null,mapDays=30,mapFitted=false,leafletP=null;
+  function loadLeaflet(){
+    if(leafletP)return leafletP;
+    const base="https://cdnjs.cloudflare.com/ajax/libs/";
+    const css=h=>{const l=document.createElement("link");l.rel="stylesheet";l.href=base+h;document.head.appendChild(l)};
+    const js=h=>new Promise((ok,no)=>{const e=document.createElement("script");e.src=base+h;e.onload=ok;e.onerror=no;document.head.appendChild(e)});
+    css("leaflet/1.9.4/leaflet.css");css("leaflet.markercluster/1.5.3/MarkerCluster.css");css("leaflet.markercluster/1.5.3/MarkerCluster.Default.css");
+    leafletP=js("leaflet/1.9.4/leaflet.js").then(()=>js("leaflet.markercluster/1.5.3/leaflet.markercluster.js"));
+    leafletP.catch(()=>{leafletP=null});
+    return leafletP;
+  }
+  const agoText=n=>n===0?"Logged today":n===1?"Logged yesterday":"Logged "+n+" days ago";
+  async function showMap(){
+    $("mapCount").textContent="Loading…";
+    try{await loadLeaflet()}catch(e){$("mapCount").textContent="The map needs signal";return}
+    if(!mapObj){
+      mapObj=L.map("map").setView([-37.68,144.55],10);
+      L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:19,attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'}).addTo(mapObj);
+    }
+    setTimeout(()=>mapObj.invalidateSize(),60);
+    loadPoints();
+  }
+  async function loadPoints(){
+    try{
+      const r=await fetch(API+"/api/potholes?days="+mapDays);if(!r.ok)throw new Error("http "+r.status);
+      const d=await r.json();setStats(d);
+      if(mapLayer)mapObj.removeLayer(mapLayer);
+      mapLayer=L.markerClusterGroup({maxClusterRadius:40,showCoverageOnHover:false});
+      d.points.forEach(([lat,lng,ago])=>{
+        mapLayer.addLayer(L.circleMarker([lat,lng],{radius:8,weight:2,color:"#141516",fillColor:ago<7?"#ff6b1a":ago<31?"#f5c518":"#9aa0a6",fillOpacity:.95}).bindPopup(agoText(ago)));
+      });
+      mapObj.addLayer(mapLayer);
+      $("mapCount").textContent=d.points.length.toLocaleString("en-AU")+" shown";
+      if(d.points.length&&!mapFitted){mapObj.fitBounds(mapLayer.getBounds(),{maxZoom:14,padding:[24,24]});mapFitted=true}
+    }catch(e){$("mapCount").textContent="Couldn't load the map. Check your signal."}
+  }
+  $("mapBox").addEventListener("toggle",()=>{if($("mapBox").open)showMap()});
+  $("mapRange").querySelectorAll("[data-days]").forEach(b=>b.onclick=()=>{
+    mapDays=+b.dataset.days;$("mapRange").querySelectorAll("[data-days]").forEach(x=>x.setAttribute("aria-pressed",x===b));
+    if(mapObj)loadPoints();
+  });
+  let meDot=null;
+  $("mapMe").onclick=()=>{
+    if(!mapObj||!("geolocation" in navigator))return;
+    navigator.geolocation.getCurrentPosition(p=>{
+      const ll=[p.coords.latitude,p.coords.longitude];mapObj.setView(ll,14);
+      if(meDot)meDot.setLatLng(ll);else meDot=L.circleMarker(ll,{radius:7,weight:3,color:"#fff",fillColor:"#1d6fd8",fillOpacity:1}).addTo(mapObj).bindPopup("You are here");
+    },()=>{$("mapCount").textContent="Location is blocked for this site."},{enableHighAccuracy:true,timeout:15000,maximumAge:60000});
+  };
+
+  renderQueue();renderCouncils();renderHistory();renderStats();save();
+  fetchStats();shareMissing();flushUnshare();
   if(S.queue.some(q=>q.lookup==="failed"||q.lookup==="offline"||needsArea(q)))lookupMissing();
 
   if("serviceWorker" in navigator&&location.protocol==="https:")navigator.serviceWorker.register("sw.js").catch(()=>{});
