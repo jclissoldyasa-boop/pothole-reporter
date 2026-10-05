@@ -9,7 +9,7 @@
   const $=id=>document.getElementById(id);
   const LS="pothole_reporter_v1";
   const MELTON="City of Melton";
-  const DEFAULT={me:{name:"",phone:"",email:"",share:true},councils:{},unshare:[],stats:null,suburbCouncil:{},queue:[],history:[]};
+  const DEFAULT={me:{name:"",phone:"",email:"",share:true},councils:{},unshare:[],votes:{},stats:null,suburbCouncil:{},queue:[],history:[]};
 
   let S=(function(){try{const v=JSON.parse(localStorage.getItem(LS));if(v&&v.me)return{...DEFAULT,...v,me:{...DEFAULT.me,...v.me}}}catch(e){}return JSON.parse(JSON.stringify(DEFAULT))})();
   // Older versions kept one council email (it was always Melton's).
@@ -472,10 +472,10 @@
   $("shareMap").onchange=()=>{S.me.share=$("shareMap").checked;save();if(S.me.share){S.queue.forEach(q=>{q.shareFail=0});shareMissing()}};
 
   // ---------- global counter ----------
-  function setStats(d){if(d&&typeof d.total==="number"){S.stats={total:d.total,week:d.week||0};save();renderStats()}}
+  function setStats(d){if(d&&typeof d.total==="number"){S.stats={total:d.total,week:d.week||0,fixed:d.fixed||0};save();renderStats()}}
   function renderStats(){
-    const s=S.stats;$("gcTotal").textContent=s?s.total.toLocaleString("en-AU"):"–";
-    $("gcWeek").textContent=s&&s.week?s.week.toLocaleString("en-AU")+" this week":"";
+    const s=S.stats,n=x=>x.toLocaleString("en-AU");$("gcTotal").textContent=s?n(s.total):"–";
+    $("gcWeek").textContent=[s&&s.week?n(s.week)+" this week":"",s&&s.fixed?n(s.fixed)+" \u201cfixed\u201d":""].filter(Boolean).join(" \u00b7 ");
   }
   async function fetchStats(){try{const r=await fetch(API+"/api/stats");if(r.ok)setStats(await r.json())}catch(e){}}
 
@@ -496,6 +496,46 @@
     return leafletP;
   }
   const agoText=n=>n===0?"Logged today":n===1?"Logged yesterday":"Logged "+n+" days ago";
+
+  // ---------- riders' map: is it still there? ----------
+  // "Gone" and "Fixed" (a patch job, said with a straight face) both count towards taking it off the map;
+  // "Still there" counts against. The server decides, one vote per rider per pothole.
+  let clearAt=3;
+  const VOTES=[["gone","Gone","Properly fixed"],["fixed","\u201cFixed\u201d","Patched. Sort of."],["there","Still there","Watch out"]];
+  const QUIPS={gone:"Gone. Another one bites the dust.",fixed:"\u201cFixed.\u201d We'll believe it when we ride it.",there:"Still there. Noted, eyes up."};
+  function potholePopup(p,marker){
+    const box=document.createElement("div");box.className="pop";
+    const h=document.createElement("strong");h.textContent=agoText(p.ago);
+    const tally=document.createElement("div");tally.className="pop-tally";
+    const btns=document.createElement("div");btns.className="pop-btns";
+    const note=document.createElement("div");note.className="pop-note";note.setAttribute("role","status");
+    const draw=()=>{
+      const bits=[];if(p.gone)bits.push(p.gone+" gone");if(p.fixed)bits.push(p.fixed+" \u201cfixed\u201d");if(p.there)bits.push(p.there+" still there");
+      const need=clearAt-(p.gone+p.fixed-p.there);
+      tally.textContent=(bits.length?"Riders say: "+bits.join(", ")+". ":"Ridden past it lately? ")+(need>0?need+" more \u201cgone\u201d and it's off the map.":"");
+      btns.innerHTML="";
+      VOTES.forEach(([k,label,sub])=>{
+        const b=document.createElement("button");b.type="button";b.className="pop-btn "+k;b.setAttribute("aria-pressed",S.votes[p.id]===k);
+        const t=document.createElement("b");t.textContent=label;const st=document.createElement("small");st.textContent=sub;b.append(t,st);
+        b.disabled=!p.id;b.onclick=()=>vote(p,k,marker,draw,note);btns.append(b);
+      });
+    };
+    draw();box.append(h,tally,btns,note);return box;
+  }
+  async function vote(p,kind,marker,draw,note){
+    if(S.votes[p.id]===kind){note.textContent="You already said that one.";return}
+    note.textContent="Sending…";
+    try{
+      const r=await fetch(API+"/api/potholes/"+encodeURIComponent(p.id)+"/flag",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({kind})});
+      if(r.status===429){note.textContent="Easy, tiger. Too many votes for now, try later.";return}
+      if(!r.ok)throw new Error("http "+r.status);
+      const d=await r.json();setStats(d);
+      S.votes[p.id]=kind;const ids=Object.keys(S.votes);if(ids.length>500)delete S.votes[ids[0]];save();
+      const v=d.votes||{};p.gone=+v.gone||0;p.fixed=+v.fixed||0;p.there=+v.there||0;
+      if(d.cleared){mapObj.closePopup();mapLayer.removeLayer(marker);toast(kind==="fixed"?"\u201cFixed\u201d and off the map. Ride it gently.":"Off the map. Nice one.");return}
+      draw();note.textContent=QUIPS[kind];
+    }catch(e){note.textContent="Couldn't send that. Check your signal."}
+  }
   async function showMap(){
     $("mapCount").textContent="Loading…";
     try{await loadLeaflet()}catch(e){$("mapCount").textContent="The map needs signal";return}
@@ -512,10 +552,16 @@
       const d=await r.json();setStats(d);
       if(mapLayer)mapObj.removeLayer(mapLayer);
       mapLayer=L.markerClusterGroup({maxClusterRadius:40,showCoverageOnHover:false});
-      // Only plain numbers from the server reach the map, so popups can't carry HTML.
-      (Array.isArray(d.points)?d.points:[]).map(p=>[+p[0],+p[1],Math.max(0,Math.floor(+p[2]))]).filter(p=>p.every(Number.isFinite)).forEach(([lat,lng,ago])=>{
-        mapLayer.addLayer(L.circleMarker([lat,lng],{radius:8,weight:2,color:"#141516",fillColor:ago<7?"#ff6b1a":ago<31?"#f5c518":"#9aa0a6",fillOpacity:.95}).bindPopup(agoText(ago)));
-      });
+      clearAt=Math.max(1,Math.floor(+d.clearAt)||3);
+      // Only plain numbers and a checked id from the server reach the map; popups are built from DOM nodes, never HTML.
+      const num=x=>Math.max(0,Math.floor(+x)||0);
+      (Array.isArray(d.points)?d.points:[])
+        .map(p=>({lat:+p[0],lng:+p[1],ago:num(p[2]),id:/^[A-Za-z0-9_-]{6,32}$/.test(p[3])?p[3]:"",gone:num(p[4]),fixed:num(p[5]),there:num(p[6])}))
+        .filter(p=>Number.isFinite(p.lat)&&Number.isFinite(p.lng))
+        .forEach(p=>{
+          const m=L.circleMarker([p.lat,p.lng],{radius:8,weight:2,color:"#141516",fillColor:p.ago<7?"#ff6b1a":p.ago<31?"#f5c518":"#9aa0a6",fillOpacity:.95});
+          m.bindPopup(()=>potholePopup(p,m),{minWidth:220});mapLayer.addLayer(m);
+        });
       mapObj.addLayer(mapLayer);
       $("mapCount").textContent=d.points.length.toLocaleString("en-AU")+" shown";
       if(d.points.length&&!mapFitted){mapObj.fitBounds(mapLayer.getBounds(),{maxZoom:14,padding:[24,24]});mapFitted=true}

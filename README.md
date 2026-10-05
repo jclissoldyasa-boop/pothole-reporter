@@ -21,8 +21,9 @@ Push changes to `main`; GitHub Pages republishes. The phone picks up the new ver
 - Each logged pothole's spot is sent to a small Cloudflare Worker (`server/`) with a D1 database. The server keeps only the latitude/longitude and the day. No name, phone, email, road, time of day or IP address.
 - The header counter shows the total logged by all riders and how many this week.
 - The map (Leaflet + OpenStreetMap tiles) shows potholes from the last 7 days, 30 days, year or all time, coloured by age.
+- Tap a pin to say the pothole is Gone, "Fixed" (a dodgy patch, in quotes), or Still there. One vote per rider (connection) per pothole, changeable. Once gone + "fixed" votes are 3 more than still-there votes, it comes off the map and counts towards the header's "fixed" total. Votes store only a secret-salted hash of IP + pothole id. `CLEAR_AT` in `server/src/worker.js` sets the threshold.
 - Deleting a report on the phone takes it off the map too (the phone keeps a private delete key for each one). Sharing can be turned off in "Your details".
-- API: `GET /api/stats`, `GET /api/potholes?days=30`, `POST /api/potholes {lat,lng}`, `DELETE /api/potholes/:id` with `X-Delete-Key`. Posts are limited to 120 an hour per IP (salted, daily-rotating hash) and must be inside Australia.
+- API: `GET /api/stats`, `GET /api/potholes?days=30`, `POST /api/potholes {lat,lng}`, `POST /api/potholes/:id/flag {kind: gone|fixed|there}`, `DELETE /api/potholes/:id` with `X-Delete-Key`. Posts are limited to 120 an hour per IP (salted, daily-rotating hash) and must be inside Australia.
 - Deploy the server: `cd server && npm install && npm run deploy` (needs `wrangler login`). Live at https://pothole-reporter.drivemate-app.workers.dev
 - A copy of the app opened from `localhost` talks to `wrangler dev` on port 8787 instead, so testing doesn't touch the live map.
 

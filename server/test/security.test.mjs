@@ -13,7 +13,7 @@ const schema = readFileSync(new URL("../migrations/0001_init.sql", import.meta.u
 ok(!/\b(name|email|phone|ip|address|time|user)\w*\s+(text|integer|real)/.test(schema.replace(/--.*$/gm, "")), "schema has no personal-data columns");
 
 const stats = await (await fetch(BASE + "/api/stats")).json();
-ok(JSON.stringify(Object.keys(stats).sort()) === '["total","week"]', "stats returns only counts");
+ok(JSON.stringify(Object.keys(stats).sort()) === '["fixed","total","week"]', "stats returns only counts");
 
 const a = await post(JSON.stringify({ lat: -37.6870123, lng: 144.5620456, name: "Sam", phone: "0400 000 000", email: "sam@example.com" }));
 const ra = await a.json();
@@ -23,9 +23,30 @@ const rb = await b.json();
 
 const list = await (await fetch(BASE + "/api/potholes?days=1")).json();
 const raw = JSON.stringify(list);
-ok(list.points.every(p => Array.isArray(p) && p.length === 3 && p.every(n => typeof n === "number")), "map points are only [lat, lng, daysAgo]");
-ok(!/Sam|0400|example\.com|key|hash/i.test(raw) && !raw.includes(ra.id), "map data has no names, contacts, ids or keys");
+ok(list.points.every(p => Array.isArray(p) && p.length === 7 && typeof p[3] === "string" && [0, 1, 2, 4, 5, 6].every(i => typeof p[i] === "number")), "map points are only location, age, public id and vote counts");
+ok(!/"(name|phone|email|key|key_hash|voter|ip)"/.test(raw) && !["Sam", "0400 000 000", "sam@example.com", ra.key].some(x => raw.includes(x)), "map data has no names, contacts, keys or voters");
 ok(list.points.some(p => p[0] === -37.687 && p[1] === 144.562), "locations rounded to ~10 m");
+
+// Flags: one vote per connection per pothole, and enough "gone"/"fixed" votes clear it off the map.
+const flag = (id, kind) => fetch(BASE + "/api/potholes/" + id + "/flag", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ kind }) });
+ok((await flag(ra.id, "nope")).status === 400, "unknown flag kind refused");
+ok((await flag("doesnotexist", "gone")).status === 404, "flagging a missing pothole refused");
+await flag(ra.id, "gone"); await flag(ra.id, "fixed"); const v3 = await (await flag(ra.id, "gone")).json();
+ok(v3.votes.gone + v3.votes.fixed === 1 && !v3.cleared, "repeat votes from one rider count once");
+const listF = await (await fetch(BASE + "/api/potholes?days=1")).json();
+ok(listF.points.some(p => p[3] === ra.id), "still on the map below the threshold");
+
+// Different riders. Faking CF-Connecting-IP only works on wrangler dev; Cloudflare sets it in production.
+const flagAs = (id, kind, ip) => fetch(BASE + "/api/potholes/" + id + "/flag", { method: "POST", headers: { "Content-Type": "application/json", "CF-Connecting-IP": ip }, body: JSON.stringify({ kind }) });
+const c = await (await post(JSON.stringify({ lat: -37.71, lng: 144.61 }))).json();
+await flagAs(c.id, "gone", "10.0.0.1"); await flagAs(c.id, "fixed", "10.0.0.2"); await flagAs(c.id, "there", "10.0.0.3");
+const held = await (await flagAs(c.id, "fixed", "10.0.0.4")).json();
+ok(!held.cleared && held.votes.there === 1, "a 'still there' vote holds it on the map");
+const gone = await (await flagAs(c.id, "gone", "10.0.0.5")).json();
+ok(gone.cleared, "enough riders saying it's fixed clears it");
+const listC = await (await fetch(BASE + "/api/potholes?days=1")).json();
+ok(!listC.points.some(p => p[3] === c.id) && listC.fixed >= 1, "cleared pothole is off the map and counted as fixed");
+await del(c.id, c.key);
 
 ok((await del(ra.id)).status === 401, "delete without key refused");
 ok((await (await del(ra.id, "A".repeat(24))).json()).deleted === 0, "delete with wrong key does nothing");

@@ -133,3 +133,14 @@ ul.councils li:first-child{border-top:none}
 .cedit input{flex:1 1 200px}
 .tag{display:inline-block;font-size:.68rem;font-weight:800;text-transform:uppercase;letter-spacing:.04em;padding:1px 6px;border-radius:4px;background:var(--sign);color:var(--sign-ink);vertical-align:2px}
 .tag.mine{background:var(--flame)}
+.pop strong{font-family:var(--head);text-transform:uppercase;letter-spacing:.03em;font-size:1rem}
+.pop-tally{font-size:.82rem;color:#444;margin:4px 0 8px}
+.pop-btns{display:grid;grid-template-columns:repeat(3,1fr);gap:5px}
+.pop-btn{font:inherit;cursor:pointer;border:2px solid #141516;border-radius:6px;background:#fff;color:#141516;padding:6px 4px;display:flex;flex-direction:column;align-items:center;line-height:1.1}
+.pop-btn b{font-family:var(--head);text-transform:uppercase;font-weight:600;font-size:.86rem;letter-spacing:.02em}
+.pop-btn small{font-size:.66rem;margin-top:2px;color:#555}
+.pop-btn.gone[aria-pressed="true"]{background:#1f7a4a;border-color:#1f7a4a;color:#fff}
+.pop-btn.fixed[aria-pressed="true"]{background:#f5c518}
+.pop-btn.there[aria-pressed="true"]{background:#ff6b1a}
+.pop-btn[aria-pressed="true"] small{color:inherit}
+.pop-note{font-size:.8rem;font-weight:700;margin-top:6px;min-height:1em}
