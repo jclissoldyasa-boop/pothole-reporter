@@ -119,3 +119,17 @@ label.check input{width:22px;height:22px;flex:none;accent-color:var(--flame)}
 .map .marker-cluster-small,.map .marker-cluster-medium,.map .marker-cluster-large{background:rgba(245,197,24,.45)}
 .map .marker-cluster-small div,.map .marker-cluster-medium div,.map .marker-cluster-large div{background:#f5c518;color:#141516;border:2px solid #141516}
 .map .marker-cluster-large div{background:#ff6b1a}
+#councilSearch{margin:10px 0 4px;box-sizing:border-box;-webkit-appearance:none;appearance:none}
+ul.councils{list-style:none;margin:0;padding:0}
+ul.councils li{border-top:1px solid var(--line);padding:10px 0}
+ul.councils li:first-child{border-top:none}
+.crow{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
+.crow strong{font-size:.98rem}
+.cemail{font-size:.88rem;word-break:break-all;margin-top:2px}
+.cemail.none{color:var(--muted);word-break:normal}
+.clinks{display:flex;gap:14px;font-size:.85rem;margin-top:2px}
+.clinks a{color:inherit}
+.cedit{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap}
+.cedit input{flex:1 1 200px}
+.tag{display:inline-block;font-size:.68rem;font-weight:800;text-transform:uppercase;letter-spacing:.04em;padding:1px 6px;border-radius:4px;background:var(--sign);color:var(--sign-ink);vertical-align:2px}
+.tag.mine{background:var(--flame)}

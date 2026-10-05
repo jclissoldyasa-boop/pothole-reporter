@@ -6,6 +6,7 @@ const LOCAL = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/;
 // Rough box around Australia, so typos and junk don't land on the map.
 const BOUNDS = { latMin: -44.5, latMax: -9, lngMin: 112, lngMax: 154.5 };
 const POSTS_PER_HOUR = 120;
+const MAX_BODY = 512; // bytes; a report is just {"lat":..,"lng":..}
 const MAX_POINTS = 20000;
 
 function cors(req) {
@@ -22,7 +23,14 @@ function cors(req) {
 function json(req, data, status = 200, extra = {}) {
   return new Response(JSON.stringify(data), {
     status,
-    headers: { "Content-Type": "application/json", "X-Content-Type-Options": "nosniff", ...cors(req), ...extra },
+    headers: {
+      "Content-Type": "application/json",
+      "X-Content-Type-Options": "nosniff",
+      "Referrer-Policy": "no-referrer",
+      "Cache-Control": "no-store",
+      "Strict-Transport-Security": "max-age=31536000",
+      ...cors(req), ...extra,
+    },
   });
 }
 const today = () => new Intl.DateTimeFormat("en-CA", { timeZone: "Australia/Melbourne" }).format(new Date());
@@ -38,11 +46,12 @@ function randomId(bytes) {
   return btoa(String.fromCharCode(...a)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
 
-// Counts posts per salted IP hash per hour. The salt changes daily, so hashes can't be linked across days.
+// Counts posts per IP per hour without storing the IP: it's hashed with a secret (RATE_SALT) and the day,
+// so the database can't be reversed into IP addresses or linked across days.
 async function overLimit(req, env) {
   const ip = req.headers.get("CF-Connecting-IP") || "unknown";
   const hour = new Date().toISOString().slice(0, 13);
-  const bucket = (await sha256(ip + "|" + hour.slice(0, 10) + "|pothole")).slice(0, 32) + "|" + hour;
+  const bucket = (await sha256(ip + "|" + hour.slice(0, 10) + "|" + (env.RATE_SALT || ""))).slice(0, 32) + "|" + hour;
   const row = await env.DB.prepare(
     "INSERT INTO rate (bucket, n) VALUES (?, 1) ON CONFLICT(bucket) DO UPDATE SET n = n + 1 RETURNING n"
   ).bind(bucket).first();
@@ -79,8 +88,10 @@ export default {
     }
 
     if (url.pathname === "/api/potholes" && req.method === "POST") {
+      const raw = await req.text();
+      if (raw.length > MAX_BODY) return json(req, { error: "too large" }, 413);
       let body;
-      try { body = await req.json(); } catch { return json(req, { error: "bad json" }, 400); }
+      try { body = JSON.parse(raw); } catch { return json(req, { error: "bad json" }, 400); }
       const lat = Number(body && body.lat), lng = Number(body && body.lng);
       if (!Number.isFinite(lat) || !Number.isFinite(lng) ||
           lat < BOUNDS.latMin || lat > BOUNDS.latMax || lng < BOUNDS.lngMin || lng > BOUNDS.lngMax) {
@@ -88,15 +99,16 @@ export default {
       }
       if (await overLimit(req, env)) return json(req, { error: "too many reports, try later" }, 429);
       const id = randomId(9), key = randomId(18);
+      // Rounded to about 10 m: plenty to find a pothole, too coarse to pick out a house.
       await env.DB.prepare("INSERT INTO potholes (id, lat, lng, day, key_hash) VALUES (?, ?, ?, ?, ?)")
-        .bind(id, Math.round(lat * 1e5) / 1e5, Math.round(lng * 1e5) / 1e5, today(), await sha256(key)).run();
+        .bind(id, Math.round(lat * 1e4) / 1e4, Math.round(lng * 1e4) / 1e4, today(), await sha256(key)).run();
       return json(req, { id, key, ...(await stats(env)) }, 201);
     }
 
     const m = url.pathname.match(/^\/api\/potholes\/([A-Za-z0-9_-]{6,32})$/);
     if (m && req.method === "DELETE") {
       const key = req.headers.get("X-Delete-Key") || "";
-      if (!key) return json(req, { error: "missing key" }, 401);
+      if (!/^[A-Za-z0-9_-]{24}$/.test(key)) return json(req, { error: "missing key" }, 401);
       const r = await env.DB.prepare("DELETE FROM potholes WHERE id = ? AND key_hash = ?")
         .bind(m[1], await sha256(key)).run();
       // Gone already counts as done, so a retry after a dropped connection is fine.

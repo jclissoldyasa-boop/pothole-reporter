@@ -18,12 +18,18 @@
   // Early versions came with the developer's name and phone filled in, and saved them on every phone. Clear them once.
   if(!S.meReset){let h=5381;for(const c of S.me.name+"|"+S.me.phone)h=((h*33)^c.charCodeAt(0))>>>0;if(h===2492536473){S.me.name="";S.me.phone=""}S.meReset=true}
 
-  // Councils we know how to reach. Others are found on the road and you add their email once.
-  const KNOWN={
-    "City of Melton":{phone:"03 9747 7200",form:"https://www.melton.vic.gov.au/Online-Forms/General-enquiry-form"},
-    "Shire of Moorabool":{email:"info@moorabool.vic.gov.au",phone:"03 5366 7100",form:"https://moorabool.vic.gov.au/Building-and-planning/Roads-and-transport/Report-a-road-maintenance-issue"}
-  };
-  const councilEmail=c=>(S.councils[c]||(KNOWN[c]&&KNOWN[c].email)||"").trim();
+  // Every Victorian council (councils.js). OpenStreetMap says "Shire of Moorabool", the council says
+  // "Moorabool Shire Council", so both are matched on the core name ("moorabool").
+  function coreName(n){return(n||"").toLowerCase().replace(/[-']/g," ").replace(/\b(city|shire|rural|borough|council|of|the)\b/g," ").replace(/\s+/g," ").trim()}
+  const VIC={};(window.VIC_COUNCILS||[]).forEach(([name,phone,email,web])=>{VIC[coreName(name)]={name,phone,email,web}});
+  const councilInfo=c=>VIC[coreName(c)]||null;
+  const councilName=c=>{const i=councilInfo(c);return i?i.name:c};
+  const shortCouncil=c=>councilName(c).replace(/ (Rural City|City|Shire|Borough) Council$/,"");
+  // Your own email for a council (or VicRoads, key "vicroads") wins over the built-in one.
+  const councilEmail=c=>(S.councils[coreName(c)]||(councilInfo(c)||{}).email||"").trim();
+  const vicroadsEmail=()=>(S.councils.vicroads||TO).trim();
+  // Saved emails used to be keyed by OpenStreetMap's name.
+  {const old=S.councils;S.councils={};Object.keys(old).forEach(k=>{if(old[k])S.councils[k==="vicroads"?k:coreName(k)]=old[k]})}
 
   // ---------- who manages the road ----------
   // Source: Melton City Council "Arterial Roads" page — roads in the City of Melton controlled by VicRoads.
@@ -48,11 +54,11 @@
     if(/service road/.test(r))return council?{auth:"council",why:"Service roads beside main roads are council's"}:{auth:"check",why:"Service road, but the council wasn't found. Add it under Details"};
     if(/\b(freeway|highway)\b/.test(r))return{auth:"vicroads",why:"Freeways and highways are VicRoads"};
     if(ref)return{auth:"vicroads",why:"Route "+ref+" is a VicRoads arterial road"};
-    if(council===MELTON){
+    if(coreName(council)==="melton"){
       if(VR_FULL.includes(r))return{auth:"vicroads",why:"On Melton's list of VicRoads roads"};
       if(VR_PART[r])return{auth:"check",why:VR_PART[r]+". Check the map, then pick one"};
     }
-    if(council)return{auth:"council",why:"Local road in the "+council};
+    if(council)return{auth:"council",why:"Local road, "+councilName(council)};
     return{auth:"check",why:"Couldn't tell which council this is. Pick VicRoads, or add the council under Details"};
   }
   function applyClass(q){if(!q.council){const c=guessCouncil(q);if(c)q.council=c}if(q.authSet)return;const c=classify(q);q.auth=c.auth;q.why=c.why}
@@ -210,16 +216,21 @@
     return{subject,body};
   }
   let pending=null;
-  const forCouncil=c=>S.queue.filter(q=>q.auth==="council"&&(q.council||"")===c);
-  const councilsInQueue=()=>[...new Set(S.queue.filter(q=>q.auth==="council").map(q=>q.council||""))];
+  const forCouncil=c=>S.queue.filter(q=>q.auth==="council"&&coreName(q.council)===coreName(c));
+  // One entry per council, however its name was spelt on each report.
+  const councilsInQueue=()=>{const m=new Map();S.queue.filter(q=>q.auth==="council").forEach(q=>{const k=coreName(q.council);if(!m.has(k))m.set(k,q.council||"")});return[...m.values()]};
   function openEmail(who,council){
     const items=who==="council"?forCouncil(council):S.queue.filter(q=>q.auth===who);
     if(!items.length)return;
     if(who==="council"&&!council){msg("Open Details on those reports and fill in Council.","err");return}
-    const to=who==="council"?councilEmail(council):TO;
-    if(!to){focusCouncil(council);msg("Add an email for the "+council+" first.","err");return}
+    const to=who==="council"?councilEmail(council):vicroadsEmail();
+    if(!to){
+      focusCouncil(council);
+      msg(councilInfo(council)?councilName(council)+" takes reports on its website, not by email. Use their website, or add an email under Council contacts.":"Add an email for "+council+" under Council contacts first.","err");
+      return;
+    }
     const {subject,body}=compose(items);
-    const label=who==="council"?council:"VicRoads";
+    const label=who==="council"?councilName(council):"VicRoads";
     pending={who,label,ids:items.map(q=>q.id),subject};
     location.href="mailto:"+to+"?subject="+encodeURIComponent(subject)+"&body="+encodeURIComponent(body);
     $("confirmText").textContent="Did the email to "+label+" send?";
@@ -252,7 +263,7 @@
     });
     return w;
   }
-  const authLabel=q=>q.auth==="vicroads"?"VicRoads":q.auth==="council"?(q.council?q.council.replace(/^(City|Shire|Rural City|Borough) of /,""):"Council"):"Check";
+  const authLabel=q=>q.auth==="vicroads"?"VicRoads":q.auth==="council"?(q.council?shortCouncil(q.council):"Council"):"Check";
   function renderQueue(openId){
     const ol=$("queue");ol.innerHTML="";
     if(!S.queue.length){const li=document.createElement("li");li.innerHTML='<p class="empty">Nothing waiting. Tap the sign when you pass a pothole.</p>';ol.appendChild(li)}
@@ -310,30 +321,65 @@
     const box=$("councilBtns");box.innerHTML="";
     councilsInQueue().forEach(c=>{
       const n=forCouncil(c).length,b=document.createElement("button");b.type="button";b.className="btn";
-      b.textContent=!c?n+" council "+(n===1?"report needs":"reports need")+" a council name":"Email "+n+" to "+c+(councilEmail(c)?"":" (add email first)");
+      b.textContent=!c?n+" council "+(n===1?"report needs":"reports need")+" a council name":"Email "+n+" to "+councilName(c)+(councilEmail(c)?"":councilInfo(c)?" (website only)":" (add email first)");
       b.onclick=()=>openEmail("council",c);box.appendChild(b);
     });
     $("clearBtn").hidden=$("swipeHint").hidden=!S.queue.length;if(!S.queue.length)$("clearConfirm").hidden=true;
     $("lookupBtn").hidden=!S.queue.some(q=>q.lookup==="failed"||q.lookup==="offline"||(q.lookup==="done"&&needsArea(q)));
   }
+  // ---------- council contacts ----------
+  let editing=null;
   function renderCouncils(){
     const list=$("councilList");list.innerHTML="";
-    const names=[...new Set([...Object.keys(KNOWN),...Object.keys(S.councils),...S.queue.map(q=>q.council).filter(Boolean)])].sort();
-    names.forEach(c=>{
-      const id="ce_"+c.replace(/\W+/g,"_"),k=KNOWN[c]||{};
-      const lab=document.createElement("label");lab.htmlFor=id;lab.textContent=c;
-      const inp=document.createElement("input");inp.id=id;inp.type="email";inp.dataset.council=c;
-      inp.placeholder=k.email||"Their reporting email";inp.value=S.councils[c]||"";
-      inp.oninput=()=>{const v=inp.value.trim();if(v)S.councils[c]=v;else delete S.councils[c];save();updateButtons()};
-      const h=document.createElement("p");h.className="hint";
-      if(k.email)h.append("Built in: "+k.email+". ");
-      if(k.phone)h.append("Phone "+k.phone+". ");
-      const a=document.createElement("a");a.target="_blank";a.rel="noopener";
-      if(k.form){a.href=k.form;a.textContent="Online form"}else{a.href="https://www.google.com/search?q="+encodeURIComponent(c+" report pothole email");a.textContent="Find their email"}
-      h.append(a);list.append(lab,inp,h);
+    const term=$("councilSearch").value.trim().toLowerCase();
+    const inQ=new Set(S.queue.filter(q=>q.council).map(q=>coreName(q.council)));
+    // Every Victorian council, plus any others met on the road or given an email.
+    const all=new Map(Object.entries(VIC).map(([k,i])=>[k,i.name]));
+    S.queue.forEach(q=>{const k=coreName(q.council);if(k&&!all.has(k))all.set(k,q.council)});
+    Object.keys(S.councils).forEach(k=>{if(k!=="vicroads"&&!all.has(k))all.set(k,k.replace(/\b\w/g,x=>x.toUpperCase()))});
+    let keys=[...all.keys()].sort((a,b)=>(inQ.has(b)-inQ.has(a))||all.get(a).localeCompare(all.get(b)));
+    keys.unshift("vicroads");
+    if(term)keys=keys.filter(k=>(k==="vicroads"?"vicroads main roads freeways":all.get(k)).toLowerCase().includes(term));
+    keys.forEach(k=>{
+      const vr=k==="vicroads",info=vr?{name:"VicRoads (main roads and freeways)",phone:"13 11 70",email:TO,web:"www.vicroads.vic.gov.au"}:VIC[k]||{name:all.get(k)};
+      const mine=S.councils[k],email=vr?vicroadsEmail():(mine||info.email||"");
+      const li=document.createElement("li");li.dataset.key=k;
+      const top=document.createElement("div");top.className="crow";
+      const nm=document.createElement("strong");nm.textContent=info.name;
+      if(inQ.has(k)){const t=document.createElement("span");t.className="tag";t.textContent="On your list";nm.append(" ",t)}
+      const ch=document.createElement("button");ch.type="button";ch.className="mini";ch.textContent=editing===k?"Close":"Change email";
+      ch.onclick=()=>{editing=editing===k?null:k;renderCouncils();if(editing===k){const el=list.querySelector('li[data-key="'+CSS.escape(k)+'"] input');if(el)el.focus()}};
+      top.append(nm,ch);
+      const em=document.createElement("div");em.className="cemail";
+      if(email){em.textContent=email;if(mine){const t=document.createElement("span");t.className="tag mine";t.textContent="Your email";em.append(" ",t)}}
+      else{em.textContent=info.web?"No email. Reports go through their website.":"No email yet. Add one to send reports here.";em.classList.add("none")}
+      const links=document.createElement("div");links.className="clinks";
+      if(info.phone){const a=document.createElement("a");a.href="tel:"+info.phone.replace(/[^\d+]/g,"");a.textContent=info.phone;links.append(a)}
+      if(info.web){const a=document.createElement("a");a.href="https://"+info.web;a.target="_blank";a.rel="noopener";a.textContent="Website";links.append(a)}
+      else{const a=document.createElement("a");a.href="https://www.google.com/search?q="+encodeURIComponent(info.name+" report road hazard email");a.target="_blank";a.rel="noopener";a.textContent="Find their email";links.append(a)}
+      li.append(top,em,links);
+      if(editing===k){
+        const box=document.createElement("div");box.className="cedit";
+        const inp=document.createElement("input");inp.type="email";inp.value=mine||"";inp.placeholder=(vr?TO:info.email)||"Their reporting email";
+        inp.setAttribute("aria-label","Email for "+info.name);
+        const sv=document.createElement("button");sv.type="button";sv.className="mini";sv.textContent="Save";
+        const save1=()=>{const v=inp.value.trim();if(v&&!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)){inp.setCustomValidity("Check the email address");inp.reportValidity();return}
+          if(v)S.councils[k]=v;else delete S.councils[k];editing=null;save();renderCouncils();updateButtons();toast(v?"Email saved":"Using the standard email")};
+        sv.onclick=save1;inp.onkeydown=e=>{if(e.key==="Enter")save1()};inp.oninput=()=>inp.setCustomValidity("");
+        box.append(inp,sv);
+        if(mine&&(vr||info.email)){const rs=document.createElement("button");rs.type="button";rs.className="mini";rs.textContent="Use standard";rs.onclick=()=>{delete S.councils[k];editing=null;save();renderCouncils();updateButtons();toast("Using the standard email")};box.append(rs)}
+        li.append(box);
+      }
+      list.append(li);
     });
+    $("councilCount").textContent=keys.length?"":"No council matches that search.";
   }
-  function focusCouncil(c){renderCouncils();$("meBox").open=true;const el=[...$("councilList").querySelectorAll("input")].find(x=>x.dataset.council===c);if(el)el.focus()}
+  $("councilSearch").addEventListener("input",renderCouncils);
+  function focusCouncil(c){
+    const k=coreName(c);$("councilBox").open=true;$("councilSearch").value="";editing=k;renderCouncils();
+    const li=$("councilList").querySelector('li[data-key="'+CSS.escape(k)+'"]');
+    if(li){li.scrollIntoView({block:"center"});const el=li.querySelector("input");if(el)el.focus()}
+  }
   function renderHistory(){
     const ul=$("history");ul.innerHTML="";
     $("clearHistoryBtn").hidden=!S.history.length;
@@ -438,10 +484,14 @@
   function loadLeaflet(){
     if(leafletP)return leafletP;
     const base="https://cdnjs.cloudflare.com/ajax/libs/";
-    const css=h=>{const l=document.createElement("link");l.rel="stylesheet";l.href=base+h;document.head.appendChild(l)};
-    const js=h=>new Promise((ok,no)=>{const e=document.createElement("script");e.src=base+h;e.onload=ok;e.onerror=no;document.head.appendChild(e)});
-    css("leaflet/1.9.4/leaflet.css");css("leaflet.markercluster/1.5.3/MarkerCluster.css");css("leaflet.markercluster/1.5.3/MarkerCluster.Default.css");
-    leafletP=js("leaflet/1.9.4/leaflet.js").then(()=>js("leaflet.markercluster/1.5.3/leaflet.markercluster.js"));
+    // Pinned with integrity hashes, so a tampered copy on the CDN won't run.
+    const css=(h,sri)=>{const l=document.createElement("link");l.rel="stylesheet";l.href=base+h;l.integrity=sri;l.crossOrigin="anonymous";document.head.appendChild(l)};
+    const js=(h,sri)=>new Promise((ok,no)=>{const e=document.createElement("script");e.src=base+h;e.integrity=sri;e.crossOrigin="anonymous";e.onload=ok;e.onerror=no;document.head.appendChild(e)});
+    css("leaflet/1.9.4/leaflet.css","sha384-sHL9NAb7lN7rfvG5lfHpm643Xkcjzp4jFvuavGOndn6pjVqS6ny56CAt3nsEVT4H");
+    css("leaflet.markercluster/1.5.3/MarkerCluster.css","sha384-pmjIAcz2bAn0xukfxADbZIb3t8oRT9Sv0rvO+BR5Csr6Dhqq+nZs59P0pPKQJkEV");
+    css("leaflet.markercluster/1.5.3/MarkerCluster.Default.css","sha384-wgw+aLYNQ7dlhK47ZPK7FRACiq7ROZwgFNg0m04avm4CaXS+Z9Y7nMu8yNjBKYC+");
+    leafletP=js("leaflet/1.9.4/leaflet.js","sha384-cxOPjt7s7Iz04uaHJceBmS+qpjv2JkIHNVcuOrM+YHwZOmJGBXI00mdUXEq65HTH")
+      .then(()=>js("leaflet.markercluster/1.5.3/leaflet.markercluster.js","sha384-eXVCORTRlv4FUUgS/xmOyr66XBVraen8ATNLMESp92FKXLAMiKkerixTiBvXriZr"));
     leafletP.catch(()=>{leafletP=null});
     return leafletP;
   }
@@ -462,7 +512,8 @@
       const d=await r.json();setStats(d);
       if(mapLayer)mapObj.removeLayer(mapLayer);
       mapLayer=L.markerClusterGroup({maxClusterRadius:40,showCoverageOnHover:false});
-      d.points.forEach(([lat,lng,ago])=>{
+      // Only plain numbers from the server reach the map, so popups can't carry HTML.
+      (Array.isArray(d.points)?d.points:[]).map(p=>[+p[0],+p[1],Math.max(0,Math.floor(+p[2]))]).filter(p=>p.every(Number.isFinite)).forEach(([lat,lng,ago])=>{
         mapLayer.addLayer(L.circleMarker([lat,lng],{radius:8,weight:2,color:"#141516",fillColor:ago<7?"#ff6b1a":ago<31?"#f5c518":"#9aa0a6",fillOpacity:.95}).bindPopup(agoText(ago)));
       });
       mapObj.addLayer(mapLayer);

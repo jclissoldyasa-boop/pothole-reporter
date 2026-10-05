@@ -2,6 +2,8 @@
 <html lang="en-AU">
 <head>
 <meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: https://tile.openstreetmap.org https://cdnjs.cloudflare.com; connect-src 'self' https://nominatim.openstreetmap.org https://overpass-api.de https://pothole-reporter.drivemate-app.workers.dev http://localhost:8787; manifest-src 'self'; worker-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
+<meta name="referrer" content="strict-origin-when-cross-origin">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Motorcycle Pothole Reporter</title>
 <meta name="description" content="One tap logs a pothole for motorcyclists, sorts it to VicRoads or the right council, and puts it on the riders' pothole map.">
@@ -83,6 +85,17 @@
   </section>
 
   <section class="card">
+    <details id="councilBox">
+      <summary>Council contacts</summary>
+      <p class="hint">Where each Victorian council takes road hazard reports. Local-road potholes go to the council for that spot, main roads to VicRoads. Want reports to go somewhere else? Tap Change email. It's saved on this phone only.</p>
+      <input id="councilSearch" type="search" placeholder="Search councils, e.g. Geelong" aria-label="Search councils" autocomplete="off">
+      <ul class="councils" id="councilList"></ul>
+      <p class="hint" id="councilCount" role="status"></p>
+      <p class="hint">Council details from the Vic Councils (Municipal Association of Victoria) contacts list.</p>
+    </details>
+  </section>
+
+  <section class="card">
     <details id="meBox">
       <summary>Your details</summary>
       <p class="hint">Added to the bottom of every email. Saved on this phone.</p>
@@ -91,9 +104,6 @@
       <label for="myEmail">Email for replies (optional)</label><input id="myEmail" type="email" autocomplete="email">
       <label class="check"><input type="checkbox" id="shareMap"> Put my potholes on the riders' map</label>
       <p class="hint">Shares only the spot and the day. Never your name, phone, email or the time.</p>
-      <h3 class="sub-h">Council emails</h3>
-      <p class="hint">Local-road potholes go to the council for that spot. New councils appear here as you report in them.</p>
-      <div id="councilList"></div>
     </details>
   </section>
 
@@ -108,6 +118,7 @@
   <p class="footnote">Pull over before you fiddle with the phone. Urgent danger on the road? Call 13 11 70 (24/7). Emergencies, call 000.<br>Map data © OpenStreetMap contributors. Melton sorting also uses the council's list of VicRoads-controlled roads.</p>
 </div>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
+<script src="councils.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

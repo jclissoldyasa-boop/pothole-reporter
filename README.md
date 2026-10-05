@@ -26,10 +26,24 @@ Push changes to `main`; GitHub Pages republishes. The phone picks up the new ver
 - Deploy the server: `cd server && npm install && npm run deploy` (needs `wrangler login`). Live at https://pothole-reporter.drivemate-app.workers.dev
 - A copy of the app opened from `localhost` talks to `wrangler dev` on port 8787 instead, so testing doesn't touch the live map.
 
+## Council contacts
+
+- `councils.js` lists all 79 Victorian councils with the phone, customer-service email (which takes road hazard reports) and website, from the Vic Councils (MAV) council contacts list. Melbourne and Port Phillip take reports only through their websites.
+- The "Council contacts" section lets anyone search the list and change the email for any council, or for VicRoads. Changes are saved on that phone only, with "Use standard" to go back.
+- Council names from OpenStreetMap ("Shire of Moorabool") are matched to the list ("Moorabool Shire Council") on the core name.
+
+## Privacy and security
+
+- Your name, phone and email are stored only on your phone and only go into the emails you send yourself. They're never sent to the map server or the lookup services.
+- The map server stores a location (rounded to ~10 m), the day, and a hash of a delete key. Nothing else: no names, contacts, times, roads or IP addresses. The rate limit uses an IP hash salted with a secret (`wrangler secret put RATE_SALT`) and the day.
+- Only the phone that logged a pothole can delete it (it holds the key; the server keeps only its hash). Nobody can edit reports, and the API never returns ids or keys in map data.
+- Requests over 512 bytes, outside Australia, or not plain numbers are refused. Browser access is limited to this site (CORS).
+- The page has a Content Security Policy limiting it to the services it uses, and the map library is pinned with integrity hashes.
+- `cd server && npm test` runs the security checks against `wrangler dev` (don't point it at the live map).
+
 ## Notes
 
 - Road names come from OpenStreetMap (Nominatim). Reports are kept on the phone until you mark them as sent.
 - VicRoads reports go to enquiries@roads.vic.gov.au.
 - Each local-road pothole goes to the council for that spot, found from OpenStreetMap council boundaries (Overpass API), with built-in Melton and Moorabool town lists as a fallback. Reports from different councils on one trip get their own email button.
-- Moorabool's email (info@moorabool.vic.gov.au) is built in. For other councils, add the email once in "Your details" and it's remembered.
 - Roads with a Victorian M, A, B or C route number go to VicRoads. In Melton, the council's published list of VicRoads-controlled roads is also used.
