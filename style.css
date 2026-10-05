@@ -87,3 +87,15 @@ details summary{cursor:pointer;font-weight:800;font-size:1.15rem}
 .confirm{margin-top:14px;padding:14px;border:2px solid var(--sign);border-radius:8px;background:var(--field)}
 .confirm p{margin:0 0 10px;font-weight:700}
 .confirm .btn{padding:12px;font-size:.95rem}
+.span2{grid-column:1/-1}
+#councilBtns{margin-top:0}
+#councilBtns:empty{display:none}
+.sub-h{font-size:.95rem;margin:16px 0 0}
+ol.queue>li{touch-action:pan-y;transition:transform .18s,opacity .18s;background:var(--surface)}
+ol.queue>li.swiping{transition:none}
+.btn.danger{border-color:var(--warn);color:var(--warn)}
+.mini.danger{color:var(--warn)}
+.clear-sent{margin-top:10px}
+.swipe-hint{text-align:center}
+.toast.act{pointer-events:auto}
+.toast button{font:inherit;font-weight:800;background:none;border:none;color:var(--sign);cursor:pointer;padding:4px 6px;margin-left:6px;text-decoration:underline}

@@ -1,6 +1,6 @@
 # Pothole Reporter
 
-One tap logs a pothole's GPS location, road, travel direction and time, sorts it to VicRoads or Melton City Council, and opens a filled-in email to send.
+One tap logs a pothole's GPS location, road, travel direction and time, sorts it to VicRoads or the council for that spot (e.g. Melton, Moorabool), and opens a filled-in email to send.
 
 ## Put it online (GitHub Pages)
 
@@ -22,5 +22,7 @@ Replace the changed files in the repository. The phone picks up the new version 
 ## Notes
 
 - Road names come from OpenStreetMap (Nominatim). Reports are kept on the phone until you mark them as sent.
-- VicRoads reports go to enquiries@roads.vic.gov.au. Add your council's email in "Your details" for local-road potholes.
-- The VicRoads/council sorting uses Melton City Council's published list of VicRoads-controlled roads.
+- VicRoads reports go to enquiries@roads.vic.gov.au.
+- Each local-road pothole goes to the council for that spot, found from OpenStreetMap council boundaries (Overpass API). Reports from different councils on one trip get their own email button.
+- Moorabool's email (info@moorabool.vic.gov.au) is built in. For other councils, add the email once in "Your details" and it's remembered.
+- Roads with a Victorian M, A, B or C route number go to VicRoads. In Melton, the council's published list of VicRoads-controlled roads is also used.

@@ -20,7 +20,7 @@
 <div class="wrap">
   <header class="road">
     <h1>Pothole Reporter</h1>
-    <p>One tap logs the spot, road, direction and time, then sorts it to VicRoads or council.</p>
+    <p>One tap logs the spot, road, direction and time, then sorts it to VicRoads or whichever council looks after that road.</p>
   </header>
 
   <div class="mark-zone">
@@ -35,8 +35,9 @@
     <ol class="queue" id="queue"></ol>
     <div class="actions">
       <button class="btn primary" id="sendBtn" type="button">Email VicRoads</button>
-      <button class="btn" id="sendCouncilBtn" type="button" hidden>Email council</button>
-      <button class="btn" id="lookupBtn" type="button" hidden>Look up road names</button>
+      <div class="actions" id="councilBtns"></div>
+      <button class="btn" id="lookupBtn" type="button" hidden>Retry lookups</button>
+      <button class="btn danger" id="clearBtn" type="button" hidden>Clear all reports</button>
     </div>
     <div class="confirm" id="confirm" hidden>
       <p id="confirmText">Did the email send?</p>
@@ -45,6 +46,14 @@
         <button class="btn" id="confirmNo" type="button">Not yet</button>
       </div>
     </div>
+    <div class="confirm" id="clearConfirm" hidden>
+      <p id="clearText">Delete all reports?</p>
+      <div class="row">
+        <button class="btn danger" id="clearYes" type="button">Delete all</button>
+        <button class="btn" id="clearNo" type="button">Cancel</button>
+      </div>
+    </div>
+    <p class="hint swipe-hint" id="swipeHint" hidden>Swipe a report left to delete it.</p>
     <p class="sendmsg" id="sendMsg" role="status" aria-live="polite"></p>
   </section>
 
@@ -55,8 +64,9 @@
       <label for="myName">Name</label><input id="myName" autocomplete="name">
       <label for="myPhone">Phone</label><input id="myPhone" type="tel" autocomplete="tel">
       <label for="myEmail">Email for replies (optional)</label><input id="myEmail" type="email" autocomplete="email">
-      <label for="councilEmail">Council email for local-road potholes</label><input id="councilEmail" type="email" placeholder="Your council's reporting email">
-      <p class="hint">Melton City Council: 03 9747 7200, or its <a href="https://www.melton.vic.gov.au/Online-Forms/General-enquiry-form" target="_blank" rel="noopener">online enquiry form</a>. Add an email here if they give you one.</p>
+      <h3 class="sub-h">Council emails</h3>
+      <p class="hint">Local-road potholes go to the council for that spot. New councils appear here as you report in them.</p>
+      <div id="councilList"></div>
     </details>
   </section>
 
@@ -64,10 +74,11 @@
     <details>
       <summary>Sent</summary>
       <ul class="history" id="history"></ul>
+      <button class="mini danger clear-sent" id="clearHistoryBtn" type="button" hidden>Clear sent list</button>
     </details>
   </section>
 
-  <p class="footnote">Urgent danger on the road? Call 13 11 70 (24/7). Emergencies, call 000.<br>Road names © OpenStreetMap contributors. Sorting uses Melton City Council's list of VicRoads-controlled roads.</p>
+  <p class="footnote">Urgent danger on the road? Call 13 11 70 (24/7). Emergencies, call 000.<br>Road names © OpenStreetMap contributors. Councils and route numbers from OpenStreetMap. Melton sorting also uses the council's list of VicRoads-controlled roads.</p>
 </div>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 <script src="app.js"></script>

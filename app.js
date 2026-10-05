@@ -6,36 +6,86 @@
   const SIZE=["Small","Medium","Large / deep"];
   const $=id=>document.getElementById(id);
   const LS="pothole_reporter_v1";
-  const DEFAULT={me:{name:"",phone:"",email:"",councilEmail:""},queue:[],history:[]};
+  const MELTON="City of Melton";
+  const DEFAULT={me:{name:"",phone:"",email:""},councils:{},suburbCouncil:{},queue:[],history:[]};
 
   let S=(function(){try{const v=JSON.parse(localStorage.getItem(LS));if(v&&v.me)return{...DEFAULT,...v,me:{...DEFAULT.me,...v.me}}}catch(e){}return JSON.parse(JSON.stringify(DEFAULT))})();
+  // Older versions kept one council email (it was always Melton's).
+  if(S.me.councilEmail){if(!S.councils[MELTON])S.councils[MELTON]=S.me.councilEmail;delete S.me.councilEmail}
   function save(){try{localStorage.setItem(LS,JSON.stringify(S))}catch(e){}}
+
+  // Councils we know how to reach. Others are found on the road and you add their email once.
+  const KNOWN={
+    "City of Melton":{phone:"03 9747 7200",form:"https://www.melton.vic.gov.au/Online-Forms/General-enquiry-form"},
+    "Shire of Moorabool":{email:"info@moorabool.vic.gov.au",phone:"03 5366 7100",form:"https://moorabool.vic.gov.au/Building-and-planning/Roads-and-transport/Report-a-road-maintenance-issue"}
+  };
+  const councilEmail=c=>(S.councils[c]||(KNOWN[c]&&KNOWN[c].email)||"").trim();
 
   // ---------- who manages the road ----------
   // Source: Melton City Council "Arterial Roads" page — roads in the City of Melton controlled by VicRoads.
   const MELTON_SUBURBS=["aintree","bonnie brook","brookfield","burnside","burnside heights","caroline springs","cobblebank","deanside","diggers rest","exford","eynesbury","fieldstone","fraser rise","grangefields","harkness","hillside","kurunjang","melton","melton south","melton west","mount cottrell","parwan","plumpton","ravenhall","rockbank","strathtulloh","taylors hill","thornhill park","toolern vale","truganina","weir views","kororoit"];
   const VR_FULL=["diggers rest coimadai road","vineyard road","gap road","hopkins road","federation drive","gisborne melton road","western freeway","calder freeway","melton highway"];
   const VR_PART={"coburns road":"VicRoads only between the Western Freeway and High Street","high street":"VicRoads only between the Melton Highway and Coburns Road","christies road":"VicRoads only between Caroline Springs station and Ballarat Road"};
+  // Towns in the Shire of Moorabool, used when the council boundary lookup can't be reached.
+  const MOORABOOL_SUBURBS=["bacchus marsh","maddingley","darley","ballan","myrniong","gordon","coimadai","merrimu","long forest","hopetoun park","greendale","blackwood","mount egerton","wallace","bungaree","dunnstown","millbrook","rowsley","balliang"];
   function norm(r){return(r||"").toLowerCase().replace(/[-–—'.]/g," ").replace(/\brd\b/g,"road").replace(/\bst\b/g,"street").replace(/\bhwy\b/g,"highway").replace(/\bfwy\b/g,"freeway").replace(/\bdr\b/g,"drive").replace(/\s+/g," ").trim()}
+  // Victorian M, A, B and C route numbers are arterial roads, which VicRoads looks after.
+  const arterialRef=ref=>((ref||"").split(/[;,]/).map(x=>x.trim().toUpperCase()).find(x=>/^[MABC]\d+$/.test(x))||"");
+  function guessCouncil(q){
+    if(q.council)return q.council;
+    const sub=norm(q.place);if(!sub)return "";
+    if(S.suburbCouncil[sub])return S.suburbCouncil[sub];
+    return MELTON_SUBURBS.includes(sub)?MELTON:MOORABOOL_SUBURBS.includes(sub)?"Shire of Moorabool":"";
+  }
   function classify(q){
-    const r=norm(q.road),sub=norm(q.suburb);
+    const r=norm(q.road),council=guessCouncil(q),ref=arterialRef(q.ref);
     if(!r)return{auth:"check",why:"Road name not found yet"};
-    if(/service road/.test(r))return{auth:"council",why:"Service roads beside main roads are council's"};
+    if(q.state&&q.state!=="Victoria")return{auth:"check",why:"Outside Victoria. Check who manages this road, then pick one"};
+    if(/service road/.test(r))return council?{auth:"council",why:"Service roads beside main roads are council's"}:{auth:"check",why:"Service road, but the council wasn't found. Add it under Details"};
     if(/\b(freeway|highway)\b/.test(r))return{auth:"vicroads",why:"Freeways and highways are VicRoads"};
-    if(MELTON_SUBURBS.includes(sub)){
+    if(ref)return{auth:"vicroads",why:"Route "+ref+" is a VicRoads arterial road"};
+    if(council===MELTON){
       if(VR_FULL.includes(r))return{auth:"vicroads",why:"On Melton's list of VicRoads roads"};
       if(VR_PART[r])return{auth:"check",why:VR_PART[r]+". Check the map, then pick one"};
-      return{auth:"council",why:"Local road in the City of Melton"};
     }
-    return{auth:"check",why:(q.suburb?q.suburb+" is":"This spot is")+" outside the City of Melton list. Check the map, then pick one"};
+    if(council)return{auth:"council",why:"Local road in the "+council};
+    return{auth:"check",why:"Couldn't tell which council this is. Pick VicRoads, or add the council under Details"};
   }
-  function applyClass(q){if(q.authSet)return;const c=classify(q);q.auth=c.auth;q.why=c.why}
+  function applyClass(q){if(!q.council){const c=guessCouncil(q);if(c)q.council=c}if(q.authSet)return;const c=classify(q);q.auth=c.auth;q.why=c.why}
 
   // ---------- road lookup (OpenStreetMap Nominatim, max 1 request a second) ----------
   let lastLookup=0;
   const wait=ms=>new Promise(r=>setTimeout(r,ms));
+  // Council boundary and nearby roads' route numbers (OpenStreetMap via Overpass).
+  async function areaLookup(q){
+    const ql="[out:json][timeout:10];is_in("+q.lat+","+q.lng+")->.a;rel(pivot.a)[boundary=administrative][admin_level=6];out tags;way(around:30,"+q.lat+","+q.lng+")[highway][name];out tags;";
+    // The public server is often busy for a moment, so try twice.
+    for(let tries=0;tries<2;tries++){
+      if(tries)await wait(1500);
+      const ctl=new AbortController(),t=setTimeout(()=>ctl.abort(),8000);
+      try{
+        const r=await fetch("https://overpass-api.de/api/interpreter",{method:"POST",body:"data="+encodeURIComponent(ql),headers:{"Content-Type":"application/x-www-form-urlencoded"},signal:ctl.signal});
+        if(!r.ok)throw new Error("http "+r.status);
+        const els=(await r.json()).elements||[];
+        const area=els.find(e=>e.type==="relation"&&e.tags&&e.tags.name);
+        return{council:area?area.tags.name:"",ways:els.filter(e=>e.type==="way"&&e.tags).map(e=>e.tags)};
+      }catch(e){}finally{clearTimeout(t)}
+    }
+    return null;
+  }
+  // A report gets a few tries at the council lookup across app opens before we stop asking.
+  const needsArea=q=>!q.areaDone&&(q.areaTries||0)<4;
+  function useArea(q,area){
+    if(!area){q.areaTries=(q.areaTries||0)+1;return}
+    q.areaDone=true;
+    if(area.council&&!q.councilSet){q.council=area.council;const sub=norm(q.place);if(sub)S.suburbCouncil[sub]=area.council}
+    const r=norm(q.road);
+    const withRef=area.ways.find(w=>w.highway!=="service"&&r&&norm(w.name)===r&&arterialRef(w.ref));
+    q.ref=withRef?withRef.ref:"";
+  }
   async function lookup(q){
     if(!navigator.onLine){q.lookup="offline";applyClass(q);return false}
+    const areaP=areaLookup(q);
     const gap=1100-(Date.now()-lastLookup);if(gap>0)await wait(gap);
     lastLookup=Date.now();
     try{
@@ -44,25 +94,29 @@
       if(!r.ok)throw new Error("http "+r.status);
       const d=await r.json();const a=d.address||{};
       const road=a.road||a.pedestrian||a.residential||"";
-      if(!road){q.lookup="none";applyClass(q);return false}
-      if(!q.roadSet)q.road=road;
-      q.suburb=a.suburb||a.town||a.village||a.city_district||a.hamlet||a.city||"";
+      q.state=a.state||"";
+      q.place=a.suburb||a.town||a.village||a.hamlet||"";
+      q.suburb=q.place||a.city_district||a.city||"";
       q.postcode=a.postcode||"";
+      if(road&&!q.roadSet)q.road=road;
+      useArea(q,await areaP);
+      if(!road){q.lookup="none";applyClass(q);return false}
       q.lookup="done";applyClass(q);return true;
-    }catch(e){q.lookup="failed";applyClass(q);return false}
+    }catch(e){useArea(q,await areaP);q.lookup="failed";applyClass(q);return false}
   }
   async function lookupMissing(){
-    const todo=S.queue.filter(q=>q.lookup!=="done"&&q.lookup!=="none");
+    const todo=S.queue.filter(q=>(q.lookup!=="done"&&q.lookup!=="none")||needsArea(q));
     if(!todo.length)return;
     $("lookupBtn").disabled=true;$("lookupBtn").textContent="Looking up…";
     for(const q of todo){q.lookup="pending";renderQueue();await lookup(q);save();renderQueue()}
-    $("lookupBtn").disabled=false;$("lookupBtn").textContent="Look up road names";
+    renderCouncils();
+    $("lookupBtn").disabled=false;$("lookupBtn").textContent="Retry lookups";
   }
   $("lookupBtn").onclick=lookupMissing;
   window.addEventListener("online",lookupMissing);
 
   // ---------- details ----------
-  [["myName","name"],["myPhone","phone"],["myEmail","email"],["councilEmail","councilEmail"]].forEach(([el,k])=>{
+  [["myName","name"],["myPhone","phone"],["myEmail","email"]].forEach(([el,k])=>{
     $(el).value=S.me[k]||"";
     $(el).addEventListener("input",()=>{S.me[k]=$(el).value.trim();save();updateButtons()});
   });
@@ -120,9 +174,9 @@
     if(navigator.vibrate)try{navigator.vibrate([60,40,60])}catch(e){}
     setStatus("Logged. Looking up the road…");
     lookup(item).then(()=>{
-      save();renderQueue();
+      save();renderQueue();renderCouncils();
       const label=(item.road||"Pothole")+(item.suburb?", "+item.suburb:"");
-      const who=item.auth==="vicroads"?"VicRoads":item.auth==="council"?"council":"needs a check";
+      const who=item.auth==="vicroads"?"VicRoads":item.auth==="council"?(item.council||"council"):"needs a check";
       if(item.lookup==="offline")setStatus("Logged. No signal, so the road will be looked up when you're back online.","good");
       else setStatus("Logged: "+label+" ("+who+").",item.auth==="check"?"err":"good");
     });
@@ -151,24 +205,27 @@
     return{subject,body};
   }
   let pending=null;
-  function openEmail(who){
-    const items=S.queue.filter(q=>q.auth===who);
+  const forCouncil=c=>S.queue.filter(q=>q.auth==="council"&&(q.council||"")===c);
+  const councilsInQueue=()=>[...new Set(S.queue.filter(q=>q.auth==="council").map(q=>q.council||""))];
+  function openEmail(who,council){
+    const items=who==="council"?forCouncil(council):S.queue.filter(q=>q.auth===who);
     if(!items.length)return;
-    const to=who==="council"?S.me.councilEmail:TO;
-    if(!to){$("meBox").open=true;$("councilEmail").focus();msg("Add your council's email first.","err");return}
+    if(who==="council"&&!council){msg("Open Details on those reports and fill in Council.","err");return}
+    const to=who==="council"?councilEmail(council):TO;
+    if(!to){focusCouncil(council);msg("Add an email for the "+council+" first.","err");return}
     const {subject,body}=compose(items);
-    pending={who,ids:items.map(q=>q.id),subject};
+    const label=who==="council"?council:"VicRoads";
+    pending={who,label,ids:items.map(q=>q.id),subject};
     location.href="mailto:"+to+"?subject="+encodeURIComponent(subject)+"&body="+encodeURIComponent(body);
-    $("confirmText").textContent="Did the email to "+(who==="council"?"council":"VicRoads")+" send?";
+    $("confirmText").textContent="Did the email to "+label+" send?";
     $("confirm").hidden=false;msg("");
   }
   $("sendBtn").onclick=()=>openEmail("vicroads");
-  $("sendCouncilBtn").onclick=()=>openEmail("council");
   $("confirmYes").onclick=()=>{
     if(!pending)return;
     const items=S.queue.filter(q=>pending.ids.includes(q.id));
     S.queue=S.queue.filter(q=>!pending.ids.includes(q.id));
-    S.history.unshift({at:new Date().toISOString(),count:items.length,to:pending.who==="council"?"council":"VicRoads",subject:pending.subject});
+    S.history.unshift({at:new Date().toISOString(),count:items.length,to:pending.label,subject:pending.subject});
     S.history=S.history.slice(0,50);
     save();$("confirm").hidden=true;
     toast(items.length===1?"Marked as sent":"Marked "+items.length+" as sent");
@@ -189,7 +246,7 @@
     });
     return w;
   }
-  const authLabel=a=>a==="vicroads"?"VicRoads":a==="council"?"Council":"Check";
+  const authLabel=q=>q.auth==="vicroads"?"VicRoads":q.auth==="council"?(q.council?q.council.replace(/^(City|Shire|Rural City|Borough) of /,""):"Council"):"Check";
   function renderQueue(openId){
     const ol=$("queue");ol.innerHTML="";
     if(!S.queue.length){const li=document.createElement("li");li.innerHTML='<p class="empty">Nothing waiting. Tap the sign when you pass a pothole.</p>';ol.appendChild(li)}
@@ -200,7 +257,7 @@
       const meta=document.createElement("div");meta.className="qmeta";
       const title=()=>q.road?(q.road+(q.near?" near "+q.near:"")+(q.suburb?", "+q.suburb:"")):(q.lookup==="pending"?"Looking up road…":q.lookup==="offline"?"Waiting for signal":"Road not found");
       const st=document.createElement("strong");st.textContent=title();
-      const badge=document.createElement("span");badge.className="auth "+q.auth;badge.textContent=authLabel(q.auth);
+      const badge=document.createElement("span");badge.className="auth "+q.auth;badge.textContent=authLabel(q);
       const sub=document.createElement("div");sub.className="sub";
       const t=new Date(q.time);
       sub.append(t.toLocaleString("en-AU",{weekday:"short",hour:"numeric",minute:"2-digit"})+(q.dir?", "+dirName(q.dir).toLowerCase():"")+(q.acc!=null?", ±"+q.acc+" m":"")+" · ");
@@ -208,10 +265,11 @@
       const why=document.createElement("div");why.className="why"+(q.auth==="check"?" warn":"");why.textContent=q.why||"";
       meta.append(st,badge,sub,why);
       const ed=document.createElement("button");ed.className="mini";ed.type="button";ed.textContent="Details";
-      const del=document.createElement("button");del.className="mini";del.type="button";del.textContent="Remove";
-      del.setAttribute("aria-label","Remove pothole "+(i+1));
-      del.onclick=()=>{S.queue=S.queue.filter(x=>x.id!==q.id);save();renderQueue()};
+      const del=document.createElement("button");del.className="mini danger";del.type="button";del.textContent="Delete";
+      del.setAttribute("aria-label","Delete pothole "+(i+1));
+      del.onclick=()=>removeReports([q.id]);
       head.append(num,meta,ed,del);
+      swipeToDelete(li,head,q.id);
       const box=document.createElement("div");box.className="qedit";box.hidden=!(openId===q.id||q.auth==="check");
       ed.setAttribute("aria-expanded",!box.hidden);
       ed.onclick=()=>{box.hidden=!box.hidden;ed.setAttribute("aria-expanded",!box.hidden)};
@@ -222,11 +280,12 @@
         b.onclick=()=>{q.auth=v;q.authSet=true;q.why="You chose this";save();renderQueue(q.id)};aw.appendChild(b);
       });
       const r=document.createElement("div");r.className="row";
-      [["road","Road","e.g. Western Fwy"],["near","Near","e.g. Coburns Rd"]].forEach(([k,l,ph])=>{
-        const w=document.createElement("div");const lab=document.createElement("label");lab.textContent=l;
-        const inp=document.createElement("input");inp.value=q[k];inp.placeholder=ph;inp.setAttribute("aria-label",l+" for pothole "+(i+1));
-        inp.oninput=()=>{q[k]=inp.value;if(k==="road"){q.roadSet=true;q.authSet=false;applyClass(q)}save();
-          st.textContent=title();badge.className="auth "+q.auth;badge.textContent=authLabel(q.auth);why.textContent=q.why||"";why.className="why"+(q.auth==="check"?" warn":"");updateButtons()};
+      [["road","Road","e.g. Western Fwy"],["near","Near","e.g. Coburns Rd"],["council","Council","e.g. Shire of Moorabool"]].forEach(([k,l,ph])=>{
+        const w=document.createElement("div");if(k==="council")w.className="span2";const lab=document.createElement("label");lab.textContent=l;
+        const inp=document.createElement("input");inp.value=q[k]||"";inp.placeholder=ph;inp.setAttribute("aria-label",l+" for pothole "+(i+1));
+        if(k==="council")inp.onchange=renderCouncils;
+        inp.oninput=()=>{q[k]=k==="council"?inp.value.trim():inp.value;if(k==="road"){q.roadSet=true;q.authSet=false;applyClass(q)}if(k==="council"){q.councilSet=!!q.council;applyClass(q)}save();
+          st.textContent=title();badge.className="auth "+q.auth;badge.textContent=authLabel(q);why.textContent=q.why||"";why.className="why"+(q.auth==="check"?" warn":"");updateButtons()};
         w.append(lab,inp);r.appendChild(w);
       });
       const l1=document.createElement("label");l1.textContent="Direction";
@@ -242,12 +301,36 @@
     $("qCount").textContent=S.queue.length?S.queue.length+" logged"+(ck.length?", "+ck.length+" to check":""):"";
     $("sendBtn").disabled=!vr.length;
     $("sendBtn").textContent=vr.length?"Email "+vr.length+" to VicRoads":"Nothing for VicRoads yet";
-    $("sendCouncilBtn").hidden=!co.length;
-    $("sendCouncilBtn").textContent=S.me.councilEmail?"Email "+co.length+" to council":"Email "+co.length+" to council (add email first)";
-    $("lookupBtn").hidden=!S.queue.some(q=>q.lookup==="failed"||q.lookup==="offline");
+    const box=$("councilBtns");box.innerHTML="";
+    councilsInQueue().forEach(c=>{
+      const n=forCouncil(c).length,b=document.createElement("button");b.type="button";b.className="btn";
+      b.textContent=!c?n+" council "+(n===1?"report needs":"reports need")+" a council name":"Email "+n+" to "+c+(councilEmail(c)?"":" (add email first)");
+      b.onclick=()=>openEmail("council",c);box.appendChild(b);
+    });
+    $("clearBtn").hidden=$("swipeHint").hidden=!S.queue.length;if(!S.queue.length)$("clearConfirm").hidden=true;
+    $("lookupBtn").hidden=!S.queue.some(q=>q.lookup==="failed"||q.lookup==="offline"||(q.lookup==="done"&&needsArea(q)));
   }
+  function renderCouncils(){
+    const list=$("councilList");list.innerHTML="";
+    const names=[...new Set([...Object.keys(KNOWN),...Object.keys(S.councils),...S.queue.map(q=>q.council).filter(Boolean)])].sort();
+    names.forEach(c=>{
+      const id="ce_"+c.replace(/\W+/g,"_"),k=KNOWN[c]||{};
+      const lab=document.createElement("label");lab.htmlFor=id;lab.textContent=c;
+      const inp=document.createElement("input");inp.id=id;inp.type="email";inp.dataset.council=c;
+      inp.placeholder=k.email||"Their reporting email";inp.value=S.councils[c]||"";
+      inp.oninput=()=>{const v=inp.value.trim();if(v)S.councils[c]=v;else delete S.councils[c];save();updateButtons()};
+      const h=document.createElement("p");h.className="hint";
+      if(k.email)h.append("Built in: "+k.email+". ");
+      if(k.phone)h.append("Phone "+k.phone+". ");
+      const a=document.createElement("a");a.target="_blank";a.rel="noopener";
+      if(k.form){a.href=k.form;a.textContent="Online form"}else{a.href="https://www.google.com/search?q="+encodeURIComponent(c+" report pothole email");a.textContent="Find their email"}
+      h.append(a);list.append(lab,inp,h);
+    });
+  }
+  function focusCouncil(c){renderCouncils();$("meBox").open=true;const el=[...$("councilList").querySelectorAll("input")].find(x=>x.dataset.council===c);if(el)el.focus()}
   function renderHistory(){
     const ul=$("history");ul.innerHTML="";
+    $("clearHistoryBtn").hidden=!S.history.length;
     if(!S.history.length){ul.innerHTML='<li><p class="empty">Nothing sent yet.</p></li>';return}
     S.history.forEach(h=>{
       const li=document.createElement("li");
@@ -257,11 +340,51 @@
       li.append(s,d);ul.appendChild(li);
     });
   }
-  function toast(t){const el=$("toast");el.textContent=t;el.classList.add("show");clearTimeout(toast._t);toast._t=setTimeout(()=>el.classList.remove("show"),2400)}
+  function toast(t,undo){
+    const el=$("toast");el.textContent=t;el.classList.toggle("act",!!undo);
+    if(undo){const b=document.createElement("button");b.type="button";b.textContent="Undo";b.onclick=()=>{undo();el.classList.remove("show","act")};el.append(" ",b)}
+    el.classList.add("show");clearTimeout(toast._t);toast._t=setTimeout(()=>el.classList.remove("show","act"),undo?6000:2400);
+  }
+
+  // ---------- delete and clear ----------
+  function removeReports(ids){
+    const gone=S.queue.map((q,i)=>[i,q]).filter(([,q])=>ids.includes(q.id));
+    if(!gone.length)return;
+    S.queue=S.queue.filter(q=>!ids.includes(q.id));save();renderQueue();renderCouncils();
+    toast(gone.length===1?"Report deleted":gone.length+" reports deleted",()=>{
+      gone.forEach(([i,q])=>{if(!S.queue.some(x=>x.id===q.id))S.queue.splice(Math.min(i,S.queue.length),0,q)});
+      save();renderQueue();renderCouncils();
+    });
+  }
+  // Swipe a report left to delete it.
+  function swipeToDelete(li,handle,id){
+    let x0=null,y0=0,dx=0,dragging=false;
+    handle.addEventListener("pointerdown",e=>{if(e.pointerType==="mouse"||e.target.closest("button,a,input"))return;x0=e.clientX;y0=e.clientY;dx=0;dragging=false});
+    handle.addEventListener("pointermove",e=>{
+      if(x0===null)return;
+      const mx=e.clientX-x0,my=e.clientY-y0;
+      if(!dragging){if(Math.abs(my)>12){x0=null;return}if(mx<-12){dragging=true;li.classList.add("swiping");try{handle.setPointerCapture(e.pointerId)}catch(_){}}else return}
+      dx=Math.min(0,mx);li.style.transform="translateX("+dx+"px)";li.style.opacity=String(Math.max(.3,1+dx/300));
+    });
+    const end=()=>{
+      if(x0===null)return;x0=null;if(!dragging)return;
+      li.classList.remove("swiping");
+      if(dx<-Math.min(120,li.offsetWidth*.35)){li.style.transform="translateX(-110%)";li.style.opacity="0";setTimeout(()=>removeReports([id]),180)}
+      else{li.style.transform="";li.style.opacity=""}
+    };
+    handle.addEventListener("pointerup",end);handle.addEventListener("pointercancel",end);
+  }
+  $("clearBtn").onclick=()=>{$("clearText").textContent="Delete all "+S.queue.length+(S.queue.length===1?" report?":" reports?");$("clearConfirm").hidden=false};
+  $("clearNo").onclick=()=>{$("clearConfirm").hidden=true};
+  $("clearYes").onclick=()=>{$("clearConfirm").hidden=true;removeReports(S.queue.map(q=>q.id))};
+  $("clearHistoryBtn").onclick=()=>{
+    const old=S.history;S.history=[];save();renderHistory();
+    toast("Sent list cleared",()=>{S.history=old.concat(S.history).slice(0,50);save();renderHistory()});
+  };
 
   S.queue.forEach(q=>{if(q.lookup==="pending")q.lookup="failed"});
-  renderQueue();renderHistory();save();
-  if(S.queue.some(q=>q.lookup==="failed"||q.lookup==="offline"))lookupMissing();
+  renderQueue();renderCouncils();renderHistory();save();
+  if(S.queue.some(q=>q.lookup==="failed"||q.lookup==="offline"||needsArea(q)))lookupMissing();
 
   if("serviceWorker" in navigator&&location.protocol==="https:")navigator.serviceWorker.register("sw.js").catch(()=>{});
 })();
