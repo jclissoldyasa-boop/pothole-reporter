@@ -18,7 +18,7 @@ header.road .kicker{margin:0;font-family:var(--head);font-weight:600;letter-spac
 header.road h1{margin:.15rem 0 0;font-family:var(--head);font-weight:700;text-transform:uppercase;font-size:2.15rem;line-height:.98;letter-spacing:.01em}
 header.road h1 span{display:block;color:var(--sign)}
 header.road .lede{margin:.6rem 0 0;color:#c4c7cb;font-size:.95rem;max-width:38ch}
-.counter{display:flex;align-items:center;gap:12px;margin-top:16px;padding:10px 14px;border:2px solid var(--sign);border-radius:8px;background:rgba(0,0,0,.35);width:fit-content;max-width:100%}
+.counter{display:flex;align-items:center;gap:12px;margin-top:10px;padding:10px 14px;border:2px solid var(--sign);border-radius:8px;background:rgba(0,0,0,.35);width:fit-content;max-width:100%}
 .counter b{font-family:var(--head);font-weight:700;font-size:2rem;line-height:1;color:var(--sign);font-variant-numeric:tabular-nums}
 .counter span{font-family:var(--head);font-weight:500;text-transform:uppercase;letter-spacing:.06em;font-size:.82rem;line-height:1.2;color:#e7e5df}
 .counter small{display:block;color:var(--flame);letter-spacing:.04em}
@@ -144,3 +144,19 @@ ul.councils li:first-child{border-top:none}
 .pop-btn.there[aria-pressed="true"]{background:#ff6b1a}
 .pop-btn[aria-pressed="true"] small{color:inherit}
 .pop-note{font-size:.8rem;font-weight:700;margin-top:6px;min-height:1em}
+.tally{margin-top:16px;display:flex;flex-direction:column;align-items:flex-start}
+.counter b{min-width:2.2ch;text-align:center}
+.counter.fixed{border-color:#5cc58d}
+.counter.fixed b{color:#5cc58d}
+.counter.fixed small{color:#a9dcc0}
+.worst{margin-top:10px;padding:10px 14px;border:2px solid var(--flame);border-radius:8px;background:rgba(0,0,0,.35);max-width:100%}
+.worst-h{font-family:var(--head);font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--flame);font-size:.85rem}
+.worst ol{margin:6px 0 4px;padding-left:1.4em;font-family:var(--head);font-weight:500;text-transform:uppercase;letter-spacing:.04em;font-size:.95rem}
+.worst li{padding:1px 0}
+.worst li b{color:var(--sign);margin-left:10px;font-variant-numeric:tabular-nums}
+.worst small{display:block;color:#a3a8ad;font-size:.72rem}
+.qbtns{display:flex;flex-direction:column;gap:4px;flex:none}
+.mini.ok{color:var(--ok);border-color:var(--ok)}
+.tag.ok{background:var(--ok);color:#fff}
+.hitem{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:6px;font-size:.88rem}
+.tally .counter,.tally .worst{width:100%;max-width:340px}

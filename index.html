@@ -25,9 +25,20 @@
     <p class="kicker">Ride safe. Report it.</p>
     <h1>Motorcycle <span>Pothole Reporter</span></h1>
     <p class="lede">One tap logs the spot. It goes to VicRoads or the right council, and onto the riders' map so others know it's there.</p>
-    <div class="counter" id="globalCount" aria-live="polite">
-      <b id="gcTotal">–</b>
-      <span>potholes logged by riders<small id="gcWeek"></small></span>
+    <div class="tally" id="globalCount" aria-live="polite">
+      <div class="counter">
+        <b id="gcTotal">–</b>
+        <span>potholes reported by riders<small id="gcWeek"></small></span>
+      </div>
+      <div class="counter fixed">
+        <b id="gcFixed">–</b>
+        <span>potholes &ldquo;fixed&rdquo;<small>Gone, or patched. Sort of.</small></span>
+      </div>
+      <div class="worst" id="worst" hidden>
+        <span class="worst-h">Worst offenders</span>
+        <ol id="worstList"></ol>
+        <small>Councils with the most potholes reported on their roads</small>
+      </div>
     </div>
   </header>
 
@@ -64,7 +75,7 @@
         <button class="btn" id="clearNo" type="button">Cancel</button>
       </div>
     </div>
-    <p class="hint swipe-hint" id="swipeHint" hidden>Swipe a report left to delete it.</p>
+    <p class="hint swipe-hint" id="swipeHint" hidden>Pothole been fixed? Tap <b>Fixed</b>: it comes off the map but still counts. <b>Delete</b> (or swipe left) is for mistakes: it also removes the pothole from the riders' map and the counts.</p>
     <p class="sendmsg" id="sendMsg" role="status" aria-live="polite"></p>
   </section>
 
@@ -110,8 +121,10 @@
   <section class="card">
     <details>
       <summary>Sent</summary>
+      <p class="hint">Pothole been fixed since you reported it? Tap <b>Mark fixed</b>. It comes off the riders' map but still counts in the totals.</p>
       <ul class="history" id="history"></ul>
       <button class="mini danger clear-sent" id="clearHistoryBtn" type="button" hidden>Clear sent list</button>
+      <p class="hint">Clearing this list doesn't change the map, but you won't be able to mark those potholes fixed later.</p>
     </details>
   </section>
 

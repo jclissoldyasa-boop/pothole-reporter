@@ -9,6 +9,8 @@ const POSTS_PER_HOUR = 120;
 // A pothole comes off the map once this many more riders say it's gone (or "fixed") than say it's still there.
 const CLEAR_AT = 3;
 const KINDS = ["gone", "fixed", "there"];
+// Victoria's 79 councils by core name (matches coreName() in the app). Anything else is refused.
+const COUNCILS = new Set(["alpine", "ararat", "ballarat", "banyule", "bass coast", "baw baw", "bayside", "benalla", "boroondara", "brimbank", "buloke", "campaspe", "cardinia", "casey", "central goldfields", "colac otway", "corangamite", "darebin", "east gippsland", "frankston", "gannawarra", "glen eira", "glenelg", "golden plains", "greater bendigo", "greater dandenong", "greater geelong", "greater shepparton", "hepburn", "hindmarsh", "hobsons bay", "horsham", "hume", "indigo", "kingston", "knox", "latrobe", "loddon", "macedon ranges", "manningham", "mansfield", "maribyrnong", "maroondah", "melbourne", "melton", "merri bek", "mildura", "mitchell", "moira", "monash", "moonee valley", "moorabool", "mornington peninsula", "mount alexander", "moyne", "murrindindi", "nillumbik", "northern grampians", "port phillip", "pyrenees", "queenscliffe", "south gippsland", "southern grampians", "stonnington", "strathbogie", "surf coast", "swan hill", "towong", "wangaratta", "warrnambool", "wellington", "west wimmera", "whitehorse", "whittlesea", "wodonga", "wyndham", "yarra", "yarra ranges", "yarriambiack"]);
 const MAX_BODY = 512; // bytes; a report is just {"lat":..,"lng":..}
 const MAX_POINTS = 20000;
 
@@ -68,7 +70,18 @@ async function stats(env) {
     "SELECT COUNT(*) AS total, SUM(CASE WHEN day >= ? THEN 1 ELSE 0 END) AS week, " +
     "SUM(CASE WHEN cleared_day IS NOT NULL THEN 1 ELSE 0 END) AS fixed FROM potholes"
   ).bind(week).first();
-  return { total: r.total || 0, week: r.week || 0, fixed: r.fixed || 0 };
+  // Worst offenders: councils with the most potholes reported on their roads.
+  const { results: worst } = await env.DB.prepare(
+    "SELECT council, COUNT(*) AS n FROM potholes WHERE council IS NOT NULL GROUP BY council ORDER BY n DESC, council LIMIT 3"
+  ).all();
+  return { total: r.total || 0, week: r.week || 0, fixed: r.fixed || 0, worst: worst.map(w => [w.council, w.n]) };
+}
+
+// The phone that logged a pothole proves it with its key; the server only has the key's hash.
+async function ownerOk(req, env, id) {
+  const key = req.headers.get("X-Delete-Key") || "";
+  if (!/^[A-Za-z0-9_-]{24}$/.test(key)) return false;
+  return !!(await env.DB.prepare("SELECT 1 FROM potholes WHERE id = ? AND key_hash = ?").bind(id, await sha256(key)).first());
 }
 
 async function votes(env, id) {
@@ -143,6 +156,23 @@ export default {
       const cleared = v.gone + v.fixed - v.there >= CLEAR_AT;
       if (cleared) await env.DB.prepare("UPDATE potholes SET cleared_day = ? WHERE id = ? AND cleared_day IS NULL").bind(today(), f[1]).run();
       return json(req, { cleared, clearAt: CLEAR_AT, votes: v, ...(await stats(env)) });
+    }
+
+    // Owner-only: set the council (or clear it for VicRoads roads), or mark it fixed straight away.
+    const o = url.pathname.match(/^\/api\/potholes\/([A-Za-z0-9_-]{6,32})\/(council|fixed)$/);
+    if (o && req.method === "POST") {
+      const raw = await req.text();
+      if (raw.length > MAX_BODY) return json(req, { error: "too large" }, 413);
+      if (!(await ownerOk(req, env, o[1]))) return json(req, { error: "not yours" }, 403);
+      if (o[2] === "council") {
+        let council;
+        try { council = JSON.parse(raw).council; } catch { return json(req, { error: "bad json" }, 400); }
+        if (council !== "" && !COUNCILS.has(council)) return json(req, { error: "unknown council" }, 400);
+        await env.DB.prepare("UPDATE potholes SET council = ? WHERE id = ?").bind(council || null, o[1]).run();
+        return json(req, { council, ...(await stats(env)) });
+      }
+      await env.DB.prepare("UPDATE potholes SET cleared_day = ? WHERE id = ? AND cleared_day IS NULL").bind(today(), o[1]).run();
+      return json(req, { cleared: true, ...(await stats(env)) });
     }
 
     const m = url.pathname.match(/^\/api\/potholes\/([A-Za-z0-9_-]{6,32})$/);

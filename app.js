@@ -242,7 +242,7 @@
     const items=S.queue.filter(q=>pending.ids.includes(q.id));
     items.forEach(shareOne);
     S.queue=S.queue.filter(q=>!pending.ids.includes(q.id));
-    S.history.unshift({at:new Date().toISOString(),count:items.length,to:pending.label,subject:pending.subject});
+    S.history.unshift({at:new Date().toISOString(),count:items.length,to:pending.label,subject:pending.subject,items});
     S.history=S.history.slice(0,50);
     save();$("confirm").hidden=true;
     toast(items.length===1?"Marked as sent":"Marked "+items.length+" as sent");
@@ -282,10 +282,14 @@
       const why=document.createElement("div");why.className="why"+(q.auth==="check"?" warn":"");why.textContent=q.why||"";
       meta.append(st,badge,sub,why);
       const ed=document.createElement("button");ed.className="mini";ed.type="button";ed.textContent="Details";
+      const fx=document.createElement("button");fx.className="mini ok";fx.type="button";fx.textContent="Fixed";
+      fx.setAttribute("aria-label","Pothole "+(i+1)+" has been fixed");fx.title="Takes it off the map but keeps it in the counts";
+      fx.onclick=()=>markFixed(q);
       const del=document.createElement("button");del.className="mini danger";del.type="button";del.textContent="Delete";
-      del.setAttribute("aria-label","Delete pothole "+(i+1));
+      del.setAttribute("aria-label","Delete pothole "+(i+1)+", also from the riders' map and counts");del.title="Also removes it from the riders' map and counts";
       del.onclick=()=>removeReports([q.id]);
-      head.append(num,meta,ed,del);
+      const btns=document.createElement("div");btns.className="qbtns";btns.append(ed,fx,del);
+      head.append(num,meta,btns);
       swipeToDelete(li,head,q.id);
       const box=document.createElement("div");box.className="qedit";box.hidden=!(openId===q.id||q.auth==="check");
       ed.setAttribute("aria-expanded",!box.hidden);
@@ -324,6 +328,7 @@
       b.textContent=!c?n+" council "+(n===1?"report needs":"reports need")+" a council name":"Email "+n+" to "+councilName(c)+(councilEmail(c)?"":councilInfo(c)?" (website only)":" (add email first)");
       b.onclick=()=>openEmail("council",c);box.appendChild(b);
     });
+    syncCouncils();
     $("clearBtn").hidden=$("swipeHint").hidden=!S.queue.length;if(!S.queue.length)$("clearConfirm").hidden=true;
     $("lookupBtn").hidden=!S.queue.some(q=>q.lookup==="failed"||q.lookup==="offline"||(q.lookup==="done"&&needsArea(q)));
   }
@@ -388,8 +393,17 @@
       const li=document.createElement("li");
       const s=document.createElement("div");s.textContent=h.subject;
       const d=document.createElement("div");d.className="sub";
-      d.textContent=new Date(h.at).toLocaleString("en-AU",{dateStyle:"medium",timeStyle:"short"})+", "+h.count+(h.count===1?" pothole":" potholes")+" to "+h.to;
-      li.append(s,d);ul.appendChild(li);
+      d.textContent=new Date(h.at).toLocaleString("en-AU",{dateStyle:"medium",timeStyle:"short"})+", "+h.count+(h.count===1?" pothole":" potholes")+(h.to?" to "+h.to:", fixed before it was sent");
+      li.append(s,d);
+      (h.items||[]).forEach(q=>{
+        const row=document.createElement("div");row.className="hitem";
+        const t=document.createElement("span");t.textContent=(q.road||"Pothole")+(q.suburb?", "+q.suburb:"");
+        row.append(t);
+        if(q.fixed){const f=document.createElement("span");f.className="tag ok";f.textContent="\u201cFixed\u201d";row.append(f)}
+        else{const b=document.createElement("button");b.type="button";b.className="mini ok";b.textContent="Mark fixed";b.onclick=()=>markFixed(q,h);row.append(b)}
+        li.append(row);
+      });
+      ul.appendChild(li);
     });
   }
   function toast(t,undo){
@@ -399,6 +413,39 @@
   }
 
   // ---------- delete and clear ----------
+  // The rider who logged it says it's fixed: off the map straight away, but it stays in the counts.
+  function markFixed(q,entry){
+    const after=Date.now()+7000,inQueue=!entry,idx=S.queue.indexOf(q);
+    q.fixed=true;
+    if(q.mapId)S.unshare.push({op:"fixed",id:q.mapId,key:q.mapKey,ref:q.id,after});
+    if(inQueue){
+      S.queue=S.queue.filter(x=>x!==q);
+      entry={at:new Date().toISOString(),count:1,to:"",subject:(q.road||"Pothole")+(q.suburb?", "+q.suburb:""),items:[q]};
+      S.history.unshift(entry);S.history=S.history.slice(0,50);
+    }
+    save();renderQueue();renderHistory();renderCouncils();setTimeout(flushUnshare,7500);
+    toast("Marked \u201cfixed\u201d. Off the map, still in the counts.",()=>{
+      q.fixed=false;S.unshare=S.unshare.filter(u=>!(u.op==="fixed"&&u.ref===q.id));
+      if(inQueue){S.history=S.history.filter(h=>h!==entry);S.queue.splice(Math.max(0,Math.min(idx,S.queue.length)),0,q)}
+      save();renderQueue();renderHistory();renderCouncils();
+    });
+  }
+  // Tell the map server which council's road each pothole is on (core name), for the worst-offenders table.
+  function councilKey(q){return q.auth==="council"&&VIC[coreName(q.council)]?coreName(q.council):""}
+  async function syncCouncils(){
+    if(!navigator.onLine)return;
+    const all=[...S.queue,...S.history.flatMap(h=>h.items||[])];
+    for(const q of all){
+      if(!q.mapId||q.deleted||q.councilSyncing||q.lookup==="pending")continue;
+      const want=councilKey(q);if((q.councilSent||"")===want)continue;
+      q.councilSyncing=true;
+      try{
+        const r=await fetch(API+"/api/potholes/"+encodeURIComponent(q.mapId)+"/council",{method:"POST",headers:{"Content-Type":"application/json","X-Delete-Key":q.mapKey},body:JSON.stringify({council:want})});
+        if(r.ok){q.councilSent=want;setStats(await r.json())}else if(r.status===403||r.status===400)q.councilSent=want;
+      }catch(e){}
+      finally{delete q.councilSyncing;save()}
+    }
+  }
   function removeReports(ids){
     const gone=S.queue.map((q,i)=>[i,q]).filter(([,q])=>ids.includes(q.id));
     if(!gone.length)return;
@@ -406,7 +453,7 @@
     gone.forEach(([,q])=>{q.deleted=true;if(q.mapId)S.unshare.push({id:q.mapId,key:q.mapKey,ref:q.id,after})});
     S.queue=S.queue.filter(q=>!ids.includes(q.id));save();renderQueue();renderCouncils();
     setTimeout(flushUnshare,7500);
-    toast(gone.length===1?"Report deleted":gone.length+" reports deleted",()=>{
+    toast((gone.length===1?"Deleted":gone.length+" deleted")+", and off the riders' map and counts.",()=>{
       gone.forEach(([i,q])=>{q.deleted=false;if(!S.queue.some(x=>x.id===q.id))S.queue.splice(Math.min(i,S.queue.length),0,q)});
       S.unshare=S.unshare.filter(u=>!gone.some(([,q])=>q.id===u.ref));
       save();renderQueue();renderCouncils();
@@ -430,7 +477,7 @@
     };
     handle.addEventListener("pointerup",end);handle.addEventListener("pointercancel",end);
   }
-  $("clearBtn").onclick=()=>{$("clearText").textContent="Delete all "+S.queue.length+(S.queue.length===1?" report?":" reports?");$("clearConfirm").hidden=false};
+  $("clearBtn").onclick=()=>{$("clearText").textContent="Delete all "+S.queue.length+(S.queue.length===1?" report?":" reports?")+" They'll also come off the riders' map and out of the counts. Been fixed? Use Fixed on each one instead so they still count.";$("clearConfirm").hidden=false};
   $("clearNo").onclick=()=>{$("clearConfirm").hidden=true};
   $("clearYes").onclick=()=>{$("clearConfirm").hidden=true;removeReports(S.queue.map(q=>q.id))};
   $("clearHistoryBtn").onclick=()=>{
@@ -450,6 +497,8 @@
       if(!r.ok)throw new Error("http "+r.status);
       const d=await r.json();q.mapId=d.id;q.mapKey=d.key;setStats(d);
       if(q.deleted){S.unshare.push({id:d.id,key:d.key,ref:q.id,after:0});flushUnshare()}
+      else if(q.fixed){S.unshare.push({op:"fixed",id:d.id,key:d.key,ref:q.id,after:0});flushUnshare()}
+      setTimeout(syncCouncils,0);
       if(mapObj&&$("mapBox").open)loadPoints();
     }catch(e){q.shareFail=(q.shareFail||0)+1}
     finally{delete q.sharing;save()}
@@ -461,8 +510,10 @@
     try{
       for(const u of S.unshare.filter(u=>Date.now()>=u.after)){
         try{
-          const r=await fetch(API+"/api/potholes/"+encodeURIComponent(u.id),{method:"DELETE",headers:{"X-Delete-Key":u.key}});
-          if(r.ok||r.status===401||r.status===404){S.unshare=S.unshare.filter(x=>x!==u);if(r.ok)setStats(await r.json())}
+          const r=u.op==="fixed"
+            ?await fetch(API+"/api/potholes/"+encodeURIComponent(u.id)+"/fixed",{method:"POST",headers:{"X-Delete-Key":u.key}})
+            :await fetch(API+"/api/potholes/"+encodeURIComponent(u.id),{method:"DELETE",headers:{"X-Delete-Key":u.key}});
+          if(r.ok||r.status===401||r.status===403||r.status===404){S.unshare=S.unshare.filter(x=>x!==u);if(r.ok)setStats(await r.json())}
         }catch(e){break}
       }
       save();
@@ -472,10 +523,18 @@
   $("shareMap").onchange=()=>{S.me.share=$("shareMap").checked;save();if(S.me.share){S.queue.forEach(q=>{q.shareFail=0});shareMissing()}};
 
   // ---------- global counter ----------
-  function setStats(d){if(d&&typeof d.total==="number"){S.stats={total:d.total,week:d.week||0,fixed:d.fixed||0};save();renderStats()}}
+  function setStats(d){
+    if(!d||typeof d.total!=="number")return;
+    const worst=(Array.isArray(d.worst)?d.worst:[]).filter(w=>Array.isArray(w)&&VIC[w[0]]).map(w=>[w[0],Math.max(0,Math.floor(+w[1])||0)]).slice(0,3);
+    S.stats={total:d.total,week:d.week||0,fixed:d.fixed||0,worst};save();renderStats();
+  }
   function renderStats(){
-    const s=S.stats,n=x=>x.toLocaleString("en-AU");$("gcTotal").textContent=s?n(s.total):"–";
-    $("gcWeek").textContent=[s&&s.week?n(s.week)+" this week":"",s&&s.fixed?n(s.fixed)+" \u201cfixed\u201d":""].filter(Boolean).join(" \u00b7 ");
+    const s=S.stats,n=x=>(+x||0).toLocaleString("en-AU");
+    $("gcTotal").textContent=s?n(s.total):"\u2013";$("gcWeek").textContent=s&&s.week?n(s.week)+" this week":"";
+    $("gcFixed").textContent=s?n(s.fixed):"\u2013";
+    const w=(s&&s.worst)||[],ol=$("worstList");ol.innerHTML="";$("worst").hidden=!w.length;
+    w.forEach(([k,c])=>{const li=document.createElement("li");const nm=document.createElement("span");nm.textContent=shortCouncil(VIC[k].name);
+      const b=document.createElement("b");b.textContent=n(c);li.append(nm,b);ol.append(li)});
   }
   async function fetchStats(){try{const r=await fetch(API+"/api/stats");if(r.ok)setStats(await r.json())}catch(e){}}
 

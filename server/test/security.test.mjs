@@ -13,7 +13,7 @@ const schema = readFileSync(new URL("../migrations/0001_init.sql", import.meta.u
 ok(!/\b(name|email|phone|ip|address|time|user)\w*\s+(text|integer|real)/.test(schema.replace(/--.*$/gm, "")), "schema has no personal-data columns");
 
 const stats = await (await fetch(BASE + "/api/stats")).json();
-ok(JSON.stringify(Object.keys(stats).sort()) === '["fixed","total","week"]', "stats returns only counts");
+ok(JSON.stringify(Object.keys(stats).sort()) === '["fixed","total","week","worst"]', "stats returns only counts and the council table");
 
 const a = await post(JSON.stringify({ lat: -37.6870123, lng: 144.5620456, name: "Sam", phone: "0400 000 000", email: "sam@example.com" }));
 const ra = await a.json();
@@ -47,6 +47,20 @@ ok(gone.cleared, "enough riders saying it's fixed clears it");
 const listC = await (await fetch(BASE + "/api/potholes?days=1")).json();
 ok(!listC.points.some(p => p[3] === c.id) && listC.fixed >= 1, "cleared pothole is off the map and counted as fixed");
 await del(c.id, c.key);
+
+// Owner-only council tag and "mark fixed".
+const own = (id, what, key, body) => fetch(BASE + "/api/potholes/" + id + "/" + what, { method: "POST", headers: { "Content-Type": "application/json", ...(key ? { "X-Delete-Key": key } : {}) }, body: JSON.stringify(body || {}) });
+ok((await own(ra.id, "council", null, { council: "melton" })).status === 403, "council tag without key refused");
+ok((await own(ra.id, "council", rb.key, { council: "melton" })).status === 403, "can't tag another phone's report");
+ok((await own(ra.id, "council", ra.key, { council: "<script>" })).status === 400, "only real Victorian councils accepted");
+const tagged = await (await own(ra.id, "council", ra.key, { council: "melton" })).json();
+ok(tagged.worst.some(w => w[0] === "melton" && w[1] >= 1), "council shows in worst offenders");
+const d = await (await post(JSON.stringify({ lat: -37.72, lng: 144.62 }))).json();
+ok((await own(d.id, "fixed", ra.key)).status === 403, "can't mark another phone's report fixed");
+const fx = await (await own(d.id, "fixed", d.key)).json();
+const listD = await (await fetch(BASE + "/api/potholes?days=1")).json();
+ok(fx.cleared && !listD.points.some(p => p[3] === d.id) && listD.total === fx.total, "owner marking fixed clears it but keeps it in the count");
+await del(d.id, d.key);
 
 ok((await del(ra.id)).status === 401, "delete without key refused");
 ok((await (await del(ra.id, "A".repeat(24))).json()).deleted === 0, "delete with wrong key does nothing");

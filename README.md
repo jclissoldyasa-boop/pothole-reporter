@@ -22,8 +22,10 @@ Push changes to `main`; GitHub Pages republishes. The phone picks up the new ver
 - The header counter shows the total logged by all riders and how many this week.
 - The map (Leaflet + OpenStreetMap tiles) shows potholes from the last 7 days, 30 days, year or all time, coloured by age.
 - Tap a pin to say the pothole is Gone, "Fixed" (a dodgy patch, in quotes), or Still there. One vote per rider (connection) per pothole, changeable. Once gone + "fixed" votes are 3 more than still-there votes, it comes off the map and counts towards the header's "fixed" total. Votes store only a secret-salted hash of IP + pothole id. `CLEAR_AT` in `server/src/worker.js` sets the threshold.
-- Deleting a report on the phone takes it off the map too (the phone keeps a private delete key for each one). Sharing can be turned off in "Your details".
-- API: `GET /api/stats`, `GET /api/potholes?days=30`, `POST /api/potholes {lat,lng}`, `POST /api/potholes/:id/flag {kind: gone|fixed|there}`, `DELETE /api/potholes/:id` with `X-Delete-Key`. Posts are limited to 120 an hour per IP (salted, daily-rotating hash) and must be inside Australia.
+- The rider who logged a pothole can tap **Fixed** (in "To send") or **Mark fixed** (in "Sent"): it comes off the map straight away but stays in the totals and the "fixed" count.
+- The header shows potholes reported by riders, potholes "fixed", and the top 3 worst-offender councils (most potholes reported on council roads). The phone tells the server the council (core name, validated against the 79) only for council-road potholes.
+- Deleting a report on the phone (meant for mistakes) takes it off the map and out of the counts (the phone keeps a private delete key for each one). Sharing can be turned off in "Your details".
+- API: `GET /api/stats`, `GET /api/potholes?days=30`, `POST /api/potholes {lat,lng}`, `POST /api/potholes/:id/flag {kind: gone|fixed|there}`, `POST /api/potholes/:id/council {council}` and `POST /api/potholes/:id/fixed` (owner only, `X-Delete-Key`), `DELETE /api/potholes/:id` with `X-Delete-Key`. Posts are limited to 120 an hour per IP (salted, daily-rotating hash) and must be inside Australia.
 - Deploy the server: `cd server && npm install && npm run deploy` (needs `wrangler login`). Live at https://pothole-reporter.drivemate-app.workers.dev
 - A copy of the app opened from `localhost` talks to `wrangler dev` on port 8787 instead, so testing doesn't touch the live map.
 
