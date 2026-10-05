@@ -15,6 +15,8 @@
   // Older versions kept one council email (it was always Melton's).
   if(S.me.councilEmail){if(!S.councils[MELTON])S.councils[MELTON]=S.me.councilEmail;delete S.me.councilEmail}
   function save(){try{localStorage.setItem(LS,JSON.stringify(S))}catch(e){}}
+  // Early versions came with the developer's name and phone filled in, and saved them on every phone. Clear them once.
+  if(!S.meReset){let h=5381;for(const c of S.me.name+"|"+S.me.phone)h=((h*33)^c.charCodeAt(0))>>>0;if(h===2492536473){S.me.name="";S.me.phone=""}S.meReset=true}
 
   // Councils we know how to reach. Others are found on the road and you add their email once.
   const KNOWN={
