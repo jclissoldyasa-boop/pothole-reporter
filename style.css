@@ -172,3 +172,9 @@ ul.councils li:first-child{border-top:none}
 .share-links #shFacebook{background:#1877f2;border-color:#1877f2;color:#fff}
 .share-links #shCopy{background:#f5c518;border-color:#f5c518}
 .qr img{margin-top:12px!important}
+.awake{display:inline-flex;align-items:center;gap:8px;margin-top:10px;font:inherit;font-size:.85rem;font-weight:700;padding:6px 12px;border-radius:999px;border:1px solid var(--line);background:var(--surface);color:var(--muted);cursor:pointer}
+.awake[hidden]{display:none}
+.awake-dot{width:9px;height:9px;border-radius:50%;background:var(--muted)}
+.awake.on{color:var(--ink);border-color:var(--ok)}
+.awake.on .awake-dot{background:#2fbf71;box-shadow:0 0 0 3px rgba(47,191,113,.25)}
+.awake:disabled{cursor:default;opacity:.7}

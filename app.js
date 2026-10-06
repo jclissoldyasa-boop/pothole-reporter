@@ -640,6 +640,31 @@
     },()=>{$("mapCount").textContent="Location is blocked for this site."},{enableHighAccuracy:true,timeout:15000,maximumAge:60000});
   };
 
+  // ---------- keep the screen on while the app is open ----------
+  // Uses the Screen Wake Lock API. The phone drops the lock whenever the app goes to the background,
+  // so it's asked for again each time the app comes back into view. On by default; the button turns it off.
+  let wake=null;
+  const wantAwake=()=>S.me.awake!==false;
+  function renderAwake(){
+    const b=$("awakeBtn");b.hidden=false;
+    if(!("wakeLock" in navigator)){b.disabled=true;b.setAttribute("aria-pressed","false");$("awakeText").textContent="This phone can't keep the screen on";return}
+    b.setAttribute("aria-pressed",wantAwake());b.classList.toggle("on",!!wake);
+    $("awakeText").textContent=wantAwake()?(wake?"Screen stays on":"Screen stays on (tap anywhere to start)"):"Screen can sleep";
+    b.title=wantAwake()?"Uses more battery. Tap to let the screen sleep.":"Tap to keep the screen on while riding";
+  }
+  async function applyAwake(){
+    if(!("wakeLock" in navigator)){renderAwake();return}
+    if(wantAwake()&&document.visibilityState==="visible"&&!wake){
+      try{wake=await navigator.wakeLock.request("screen");wake.addEventListener("release",()=>{wake=null;renderAwake()})}catch(e){wake=null}
+    }else if(!wantAwake()&&wake){try{await wake.release()}catch(e){}wake=null}
+    renderAwake();
+  }
+  $("awakeBtn").onclick=()=>{S.me.awake=!wantAwake();save();applyAwake();toast(wantAwake()?"Screen will stay on while the app is open.":"Screen can sleep again.")};
+  document.addEventListener("visibilitychange",applyAwake);
+  // Some phones only allow it after a tap, so try again on the first touch.
+  document.addEventListener("pointerdown",()=>{if(!wake)applyAwake()},{passive:true});
+  applyAwake();
+
   // ---------- share with other riders ----------
   const SITE="https://jclissoldyasa-boop.github.io/pothole-reporter/";
   function shareText(){
