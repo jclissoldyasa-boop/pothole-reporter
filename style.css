@@ -169,3 +169,10 @@ ul.councils li:first-child{border-top:none}
 .qr p{margin:6px 0 8px;font-size:.85rem;font-weight:700}
 .qr input{font-size:.8rem;text-align:center;background:#f5f4f0;color:#141516;border-color:#d2cfc7}
 .qr[hidden]{display:none}
+.qr-h{margin:0 0 8px!important;font-family:var(--head);text-transform:uppercase;letter-spacing:.05em;font-size:1rem!important}
+.share-links{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:10px}
+.share-links a,.share-links button{font:inherit;font-size:.82rem;font-weight:800;padding:9px 4px;border-radius:6px;border:2px solid #141516;background:#fff;color:#141516;text-decoration:none;cursor:pointer;text-align:center}
+.share-links #shWhatsapp{background:#25d366;border-color:#25d366;color:#0b2e17}
+.share-links #shFacebook{background:#1877f2;border-color:#1877f2;color:#fff}
+.share-links #shCopy{background:#f5c518;border-color:#f5c518}
+.qr img{margin-top:12px!important}

@@ -646,17 +646,41 @@
     const t=S.stats&&S.stats.total;
     return "Ride? Log potholes in one tap. It reports them to VicRoads or the right council and warns other riders on a live map."+(t?" "+t.toLocaleString("en-AU")+" reported so far.":"");
   }
-  function showQR(open){$("qrBox").hidden=!open;$("qrBtn").setAttribute("aria-expanded",open);$("qrBtn").textContent=open?"Hide QR code":"QR code"}
+  function showQR(open){
+    $("qrBox").hidden=!open;$("qrBtn").setAttribute("aria-expanded",open);$("qrBtn").textContent=open?"Hide":"More ways";
+    if(open){
+      const t=shareText(),both=t+" "+SITE,e=encodeURIComponent;
+      $("shWhatsapp").href="https://wa.me/?text="+e(both);
+      $("shFacebook").href="https://www.facebook.com/sharer/sharer.php?u="+e(SITE);
+      $("shMessenger").href="fb-messenger://share/?link="+e(SITE);
+      $("shSms").href="sms:?&body="+e(both);
+      $("shEmail").href="mailto:?subject="+e("Motorcycle Pothole Reporter")+"&body="+e(both);
+    }
+  }
   $("qrBtn").onclick=()=>showQR($("qrBox").hidden);
   $("shareLink").onfocus=()=>$("shareLink").select();
+  // Copy that can't hang: the clipboard API gets a second, then the old select-and-copy way.
+  async function copyLink(){
+    const text=shareText()+" "+SITE;
+    try{
+      if(!navigator.clipboard||!navigator.clipboard.writeText)throw new Error("no clipboard");
+      await Promise.race([navigator.clipboard.writeText(text),new Promise((_,no)=>setTimeout(()=>no(new Error("timeout")),1000))]);
+      toast("Link copied. Paste it to your riding mates.");return;
+    }catch(e){}
+    const el=$("shareLink");el.focus();el.select();
+    let ok=false;try{ok=document.execCommand("copy")}catch(e){}
+    toast(ok?"Link copied. Paste it to your riding mates.":matchMedia("(pointer: coarse)").matches?"Press and hold the link to copy it.":"Link selected. Press Ctrl+C to copy it.");
+  }
+  $("shCopy").onclick=copyLink;
   $("shareBtn").onclick=async()=>{
-    // Phones get their own share sheet; elsewhere the link is copied.
-    if(navigator.share){
+    // Phones (touch screens) open their own share menu. Computers, including Chromebooks, either refuse it
+    // ("Permission denied") or open a system window that's easy to miss, so they get the share panel.
+    // A phone that refuses gets the panel too.
+    if(navigator.share&&matchMedia("(pointer: coarse)").matches){
       try{await navigator.share({title:"Motorcycle Pothole Reporter",text:shareText(),url:SITE});return}
       catch(e){if(e&&e.name==="AbortError")return}
     }
-    try{await navigator.clipboard.writeText(shareText()+" "+SITE);toast("Link copied. Paste it to your riding mates.")}
-    catch(e){showQR(true);$("shareLink").focus();toast("Copy the link below the QR code.")}
+    showQR(true);$("qrBox").scrollIntoView({block:"nearest",behavior:"smooth"});
   };
 
   renderQueue();renderCouncils();renderHistory();renderStats();save();

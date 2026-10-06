@@ -42,12 +42,21 @@
     </div>
     <div class="share-row">
       <button class="btn share" id="shareBtn" type="button">Share with riders</button>
-      <button class="btn ghost" id="qrBtn" type="button" aria-expanded="false" aria-controls="qrBox">QR code</button>
+      <button class="btn ghost" id="qrBtn" type="button" aria-expanded="false" aria-controls="qrBox">More ways</button>
     </div>
     <div class="qr" id="qrBox" hidden>
-      <img src="qr.svg" width="180" height="180" alt="QR code that opens the Motorcycle Pothole Reporter website">
-      <p>Point a phone camera at this to open the app.</p>
+      <p class="qr-h">Send it to your riding mates</p>
+      <div class="share-links">
+        <a id="shWhatsapp" target="_blank" rel="noopener">WhatsApp</a>
+        <a id="shFacebook" target="_blank" rel="noopener">Facebook</a>
+        <a id="shMessenger" target="_blank" rel="noopener">Messenger</a>
+        <a id="shSms">Text message</a>
+        <a id="shEmail">Email</a>
+        <button type="button" id="shCopy">Copy link</button>
+      </div>
       <input id="shareLink" readonly aria-label="Link to the app" value="https://jclissoldyasa-boop.github.io/pothole-reporter/">
+      <img src="qr.svg" width="180" height="180" alt="QR code that opens the Motorcycle Pothole Reporter website">
+      <p>Or point a phone camera at this.</p>
     </div>
   </header>
 
