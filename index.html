@@ -7,17 +7,30 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Motorcycle Pothole Reporter</title>
 <meta name="description" content="One tap logs a pothole for motorcyclists, sorts it to VicRoads or the right council, and puts it on the riders' pothole map.">
+<!-- Link previews (WhatsApp, Facebook, Messenger, texts) -->
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Motorcycle Pothole Reporter">
+<meta property="og:title" content="Motorcycle Pothole Reporter">
+<meta property="og:description" content="Spot it. Tap it. Get it fixed. One tap logs a pothole, sends it to VicRoads or the right council, and warns other riders on a live map.">
+<meta property="og:url" content="https://jclissoldyasa-boop.github.io/pothole-reporter/">
+<meta property="og:image" content="https://jclissoldyasa-boop.github.io/pothole-reporter/og-card.jpg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Motorcycle Pothole Reporter: Spot it. Tap it. Get it fixed.">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://jclissoldyasa-boop.github.io/pothole-reporter/og-card.jpg">
 <meta name="theme-color" content="#141516">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Moto Potholes">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon-192.png">
-<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-maskable-192.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Overpass:wght@400;600;800;900&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="style.css">
+<link rel="preload" as="image" href="sign.webp">
 </head>
 <body>
 <div class="wrap">
@@ -62,10 +75,8 @@
 
   <div class="mark-zone">
     <button class="diamond" id="markBtn" type="button" aria-describedby="status">
-      <span>
-        <svg class="moto" viewBox="2 4 46 30" aria-hidden="true"><circle cx="10" cy="21" r="7"/><circle cx="38" cy="21" r="7"/><path class="fill" d="M15 15L19 10.5 30 10 34 13 30.5 17.5 19 19 14 18Z"/><path d="M5 12L18 11.5M5 12L4 15M10 21L20 18M38 21L33.5 8L30 6.5M33.5 8L37 7"/><path class="hole" d="M16 32h16"/></svg>
-        Pothole!<small>Tap to log it</small>
-      </span>
+      <img src="sign.webp" width="640" height="636" alt="" draggable="false">
+      <span class="vh">Pothole! Tap to log it</span>
     </button>
     <div class="status" id="status" role="status" aria-live="polite">Phone mounted, one tap, eyes back on the road. Or have your pillion tap.</div>
   </div>

@@ -1,6 +1,6 @@
 // Keeps the app opening with no signal. Road lookups still need the internet.
-const CACHE="pothole-reporter-v10";
-const FILES=["./","index.html","style.css","councils.js","app.js","manifest.webmanifest","icon-192.png","icon-512.png","qr.svg"];
+const CACHE="pothole-reporter-v11";
+const FILES=["./","index.html","style.css","councils.js","app.js","manifest.webmanifest","icon-192.png","icon-512.png","icon-maskable-192.png","icon-maskable-512.png","sign.webp","qr.svg"];
 self.addEventListener("install",e=>{e.waitUntil(caches.open(CACHE).then(c=>c.addAll(FILES)));self.skipWaiting()});
 self.addEventListener("activate",e=>{e.waitUntil(caches.keys().then(k=>Promise.all(k.filter(x=>x!==CACHE).map(x=>caches.delete(x)))));self.clients.claim()});
 self.addEventListener("fetch",e=>{
