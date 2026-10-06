@@ -640,6 +640,25 @@
     },()=>{$("mapCount").textContent="Location is blocked for this site."},{enableHighAccuracy:true,timeout:15000,maximumAge:60000});
   };
 
+  // ---------- share with other riders ----------
+  const SITE="https://jclissoldyasa-boop.github.io/pothole-reporter/";
+  function shareText(){
+    const t=S.stats&&S.stats.total;
+    return "Ride? Log potholes in one tap. It reports them to VicRoads or the right council and warns other riders on a live map."+(t?" "+t.toLocaleString("en-AU")+" reported so far.":"");
+  }
+  function showQR(open){$("qrBox").hidden=!open;$("qrBtn").setAttribute("aria-expanded",open);$("qrBtn").textContent=open?"Hide QR code":"QR code"}
+  $("qrBtn").onclick=()=>showQR($("qrBox").hidden);
+  $("shareLink").onfocus=()=>$("shareLink").select();
+  $("shareBtn").onclick=async()=>{
+    // Phones get their own share sheet; elsewhere the link is copied.
+    if(navigator.share){
+      try{await navigator.share({title:"Motorcycle Pothole Reporter",text:shareText(),url:SITE});return}
+      catch(e){if(e&&e.name==="AbortError")return}
+    }
+    try{await navigator.clipboard.writeText(shareText()+" "+SITE);toast("Link copied. Paste it to your riding mates.")}
+    catch(e){showQR(true);$("shareLink").focus();toast("Copy the link below the QR code.")}
+  };
+
   renderQueue();renderCouncils();renderHistory();renderStats();save();
   fetchStats();shareMissing();flushUnshare();
   if(S.queue.some(q=>q.lookup==="failed"||q.lookup==="offline"||needsArea(q)))lookupMissing();

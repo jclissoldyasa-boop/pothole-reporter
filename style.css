@@ -160,3 +160,12 @@ ul.councils li:first-child{border-top:none}
 .tag.ok{background:var(--ok);color:#fff}
 .hitem{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:6px;font-size:.88rem}
 .tally .counter,.tally .worst{width:100%;max-width:340px}
+.share-row{display:flex;gap:8px;margin-top:14px;max-width:340px}
+.share-row .btn{padding:11px 10px;font-size:.98rem}
+.btn.share{background:var(--sign);border-color:var(--sign);color:var(--sign-ink);flex:1.6}
+.btn.ghost{border-color:#5d6267;color:#f4f3ef;flex:1}
+.qr{margin-top:10px;padding:14px;border-radius:8px;background:#fff;color:#141516;max-width:340px;text-align:center}
+.qr img{display:block;margin:0 auto;width:180px;height:180px}
+.qr p{margin:6px 0 8px;font-size:.85rem;font-weight:700}
+.qr input{font-size:.8rem;text-align:center;background:#f5f4f0;color:#141516;border-color:#d2cfc7}
+.qr[hidden]{display:none}

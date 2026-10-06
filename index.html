@@ -40,6 +40,15 @@
         <small>Councils with the most potholes reported on their roads</small>
       </div>
     </div>
+    <div class="share-row">
+      <button class="btn share" id="shareBtn" type="button">Share with riders</button>
+      <button class="btn ghost" id="qrBtn" type="button" aria-expanded="false" aria-controls="qrBox">QR code</button>
+    </div>
+    <div class="qr" id="qrBox" hidden>
+      <img src="qr.svg" width="180" height="180" alt="QR code that opens the Motorcycle Pothole Reporter website">
+      <p>Point a phone camera at this to open the app.</p>
+      <input id="shareLink" readonly aria-label="Link to the app" value="https://jclissoldyasa-boop.github.io/pothole-reporter/">
+    </div>
   </header>
 
   <div class="mark-zone">
