@@ -644,7 +644,7 @@
   const SITE="https://jclissoldyasa-boop.github.io/pothole-reporter/";
   function shareText(){
     const t=S.stats&&S.stats.total;
-    return "Ride? Log potholes in one tap. It reports them to VicRoads or the right council and warns other riders on a live map."+(t?" "+t.toLocaleString("en-AU")+" reported so far.":"");
+    return "Sick of dodging potholes? Help keep riders upright. Log them in one tap and they're sent to whoever's meant to fix them, VicRoads or the council. Plus a live map of every hole riders have found"+(t?", "+t.toLocaleString("en-AU")+" and counting.":".");
   }
   function showQR(open){
     $("qrBox").hidden=!open;$("qrBtn").setAttribute("aria-expanded",open);$("qrBtn").textContent=open?"Hide":"More ways";
