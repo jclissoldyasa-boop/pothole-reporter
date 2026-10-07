@@ -747,6 +747,8 @@
     history.replaceState(null,"",location.pathname+location.hash);
     $("markBtn").click();
   }
+  // Already running as the installed app: point straight at the press-and-hold step.
+  if(matchMedia("(display-mode: standalone)").matches)$("guideDone").hidden=false;
   let installPrompt=null;
   window.addEventListener("beforeinstallprompt",e=>{e.preventDefault();installPrompt=e;$("installBtn").hidden=false});
   $("installBtn").onclick=async()=>{

@@ -194,3 +194,20 @@ ul.councils li:first-child{border-top:none}
 .awake.on{color:var(--ink);border-color:var(--ok)}
 .awake.on .awake-dot{background:#2fbf71;box-shadow:0 0 0 3px rgba(47,191,113,.25)}
 .awake:disabled{cursor:default;opacity:.7}
+
+/* One-tap setup guide */
+.guide-h{font-weight:800;margin:12px 0 4px}
+.guide-done{background:var(--ok);color:#fff;font-weight:700;padding:8px 12px;border-radius:8px}
+.guide{list-style:none;counter-reset:g;margin:0;padding:0}
+.guide li{counter-increment:g;position:relative;padding:10px 0 10px 42px;border-bottom:1px solid var(--line)}
+.guide li:last-child{border-bottom:none}
+.guide li::before{content:counter(g);position:absolute;left:0;top:10px;width:30px;height:30px;border-radius:50%;background:var(--sign);color:var(--sign-ink);font-family:var(--head);font-weight:700;display:flex;align-items:center;justify-content:center}
+.guide p{margin:0;font-size:.95rem}
+.mock{margin-top:8px;font-size:.85rem;border-radius:10px;background:var(--field);border:1px solid var(--line);padding:6px;display:flex;gap:6px;width:fit-content;max-width:100%}
+.mock span{padding:6px 10px;border-radius:6px;color:var(--muted)}
+.mock .hi{background:var(--sign);color:var(--sign-ink);font-weight:800;outline:2px solid var(--flame);outline-offset:1px}
+.mock .no{text-decoration:line-through;opacity:.75}
+.mock-menu{flex-direction:column;gap:2px;min-width:200px}
+.mock-hold{align-items:flex-start;background:none;border:none;padding:0}
+.mock-hold img{border-radius:12px}
+.mock-hold .pop{display:flex;flex-direction:column;gap:2px;background:var(--field);border:1px solid var(--line);border-radius:10px;padding:6px;padding:4px}
