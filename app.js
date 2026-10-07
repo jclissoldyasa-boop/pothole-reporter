@@ -749,15 +749,7 @@
   }
   // Already running as the installed app: point straight at the press-and-hold step.
   if(matchMedia("(display-mode: standalone)").matches)$("guideDone").hidden=false;
-  let installPrompt=null;
-  window.addEventListener("beforeinstallprompt",e=>{e.preventDefault();installPrompt=e;$("installBtn").hidden=false});
-  $("installBtn").onclick=async()=>{
-    if(!installPrompt)return;
-    installPrompt.prompt();
-    try{await installPrompt.userChoice}catch(e){}
-    installPrompt=null;$("installBtn").hidden=true;
-  };
-  window.addEventListener("appinstalled",()=>{$("installBtn").hidden=true;toast("Added. Press and hold the icon for the Log a pothole shortcut.")});
+  window.addEventListener("appinstalled",()=>{toast("Added. Press and hold the icon for the Log a pothole shortcut.")});
 
   if("serviceWorker" in navigator&&location.protocol==="https:")navigator.serviceWorker.register("sw.js").catch(()=>{});
 })();
