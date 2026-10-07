@@ -37,6 +37,18 @@
   <header class="road">
     <p class="kicker">Ride safe. Report it.</p>
     <h1>Motorcycle <span>Pothole Reporter</span></h1>
+  </header>
+
+  <div class="mark-zone">
+    <button class="diamond" id="markBtn" type="button" aria-describedby="status">
+      <img src="sign.webp" width="640" height="636" alt="" draggable="false">
+      <span class="vh">Pothole! Tap to log it</span>
+    </button>
+    <button class="awake" id="awakeBtn" type="button" aria-pressed="false" hidden><span class="awake-dot" aria-hidden="true"></span><span id="awakeText">Screen stays on</span></button>
+    <div class="status" id="status" role="status" aria-live="polite">Phone mounted, one tap, eyes back on the road. Or have your pillion tap.</div>
+  </div>
+
+  <section class="road stats">
     <p class="lede">One tap logs the spot. It goes to VicRoads or the right council, and onto the riders' map so others know it's there.</p>
     <div class="tally" id="globalCount" aria-live="polite">
       <div class="counter">
@@ -71,16 +83,7 @@
       <img src="qr.svg" width="180" height="180" alt="QR code that opens the Motorcycle Pothole Reporter website">
       <p>Or point a phone camera at this.</p>
     </div>
-  </header>
-
-  <div class="mark-zone">
-    <button class="diamond" id="markBtn" type="button" aria-describedby="status">
-      <img src="sign.webp" width="640" height="636" alt="" draggable="false">
-      <span class="vh">Pothole! Tap to log it</span>
-    </button>
-    <button class="awake" id="awakeBtn" type="button" aria-pressed="false" hidden><span class="awake-dot" aria-hidden="true"></span><span id="awakeText">Screen stays on</span></button>
-    <div class="status" id="status" role="status" aria-live="polite">Phone mounted, one tap, eyes back on the road. Or have your pillion tap.</div>
-  </div>
+  </section>
 
   <section class="card">
     <h2>To send <span class="count" id="qCount"></span></h2>
@@ -107,6 +110,22 @@
     </div>
     <p class="hint swipe-hint" id="swipeHint" hidden>Pothole been fixed? Tap <b>Fixed</b>: it comes off the map but still counts. <b>Delete</b> (or swipe left) is for mistakes: it also removes the pothole from the riders' map and the counts.</p>
     <p class="sendmsg" id="sendMsg" role="status" aria-live="polite"></p>
+  </section>
+
+  <section class="card">
+    <details id="quickBox">
+      <summary>One tap from your home screen</summary>
+      <p class="hint">No time to open the app when a pothole comes up? Set up a home-screen button that logs one the moment you tap it.</p>
+      <button class="btn primary" id="installBtn" type="button" hidden>Add the app to your home screen</button>
+      <p><b>Android:</b></p>
+      <ol class="steps">
+        <li>Add the app to your home screen: browser menu (⋮), then <b>Add to Home screen</b> or <b>Install app</b>.</li>
+        <li>Press and hold the <b>Moto Potholes</b> icon. A <b>Log a pothole</b> shortcut pops up. Tap it and the pothole is logged straight away.</li>
+        <li>For a button of its own, drag <b>Log a pothole</b> onto your home screen.</li>
+      </ol>
+      <p><b>iPhone:</b> Share button, then <b>Add to Home Screen</b>. It opens with the big button at the top, ready to tap.</p>
+      <p class="hint">Location needs to be allowed for this app, or it will ask the first time.</p>
+    </details>
   </section>
 
   <section class="card">

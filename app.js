@@ -712,5 +712,22 @@
   fetchStats();shareMissing();flushUnshare();
   if(S.queue.some(q=>q.lookup==="failed"||q.lookup==="offline"||needsArea(q)))lookupMissing();
 
+  // ---------- one tap from the home screen ----------
+  // The "Log a pothole" app shortcut (and any link ending ?report=1) logs one as soon as the app opens.
+  // The ?report is wiped first, so a reload or going back doesn't log a second one.
+  if(new URLSearchParams(location.search).has("report")){
+    history.replaceState(null,"",location.pathname+location.hash);
+    $("markBtn").click();
+  }
+  let installPrompt=null;
+  window.addEventListener("beforeinstallprompt",e=>{e.preventDefault();installPrompt=e;$("installBtn").hidden=false});
+  $("installBtn").onclick=async()=>{
+    if(!installPrompt)return;
+    installPrompt.prompt();
+    try{await installPrompt.userChoice}catch(e){}
+    installPrompt=null;$("installBtn").hidden=true;
+  };
+  window.addEventListener("appinstalled",()=>{$("installBtn").hidden=true;toast("Added. Press and hold the icon for the Log a pothole shortcut.")});
+
   if("serviceWorker" in navigator&&location.protocol==="https:")navigator.serviceWorker.register("sw.js").catch(()=>{});
 })();
