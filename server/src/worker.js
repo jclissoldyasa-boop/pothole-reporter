@@ -68,13 +68,13 @@ async function stats(env) {
   const week = new Date(Date.parse(now) - 6 * 86400000).toISOString().slice(0, 10);
   const r = await env.DB.prepare(
     "SELECT COUNT(*) AS total, SUM(CASE WHEN day >= ? THEN 1 ELSE 0 END) AS week, " +
-    "SUM(CASE WHEN cleared_day IS NOT NULL THEN 1 ELSE 0 END) AS fixed FROM potholes"
+    "SUM(CASE WHEN cleared_day IS NOT NULL THEN 1 ELSE 0 END) AS fixed, SUM(vicroads) AS vicroads FROM potholes"
   ).bind(week).first();
-  // Worst offenders: councils with the most potholes reported on their roads.
+  // Worst offenders: councils with the most potholes reported in their area, VicRoads roads included.
   const { results: worst } = await env.DB.prepare(
     "SELECT council, COUNT(*) AS n FROM potholes WHERE council IS NOT NULL GROUP BY council ORDER BY n DESC, council LIMIT 3"
   ).all();
-  return { total: r.total || 0, week: r.week || 0, fixed: r.fixed || 0, worst: worst.map(w => [w.council, w.n]) };
+  return { total: r.total || 0, week: r.week || 0, fixed: r.fixed || 0, vicroads: r.vicroads || 0, worst: worst.map(w => [w.council, w.n]) };
 }
 
 // The phone that logged a pothole proves it with its key; the server only has the key's hash.
@@ -158,18 +158,19 @@ export default {
       return json(req, { cleared, clearAt: CLEAR_AT, votes: v, ...(await stats(env)) });
     }
 
-    // Owner-only: set the council (or clear it for VicRoads roads), or mark it fixed straight away.
+    // Owner-only: set the council area and whether it's a VicRoads road, or mark it fixed straight away.
     const o = url.pathname.match(/^\/api\/potholes\/([A-Za-z0-9_-]{6,32})\/(council|fixed)$/);
     if (o && req.method === "POST") {
       const raw = await req.text();
       if (raw.length > MAX_BODY) return json(req, { error: "too large" }, 413);
       if (!(await ownerOk(req, env, o[1]))) return json(req, { error: "not yours" }, 403);
       if (o[2] === "council") {
-        let council;
-        try { council = JSON.parse(raw).council; } catch { return json(req, { error: "bad json" }, 400); }
+        let council, vicroads;
+        try { ({ council, vicroads = false } = JSON.parse(raw)); } catch { return json(req, { error: "bad json" }, 400); }
         if (council !== "" && !COUNCILS.has(council)) return json(req, { error: "unknown council" }, 400);
-        await env.DB.prepare("UPDATE potholes SET council = ? WHERE id = ?").bind(council || null, o[1]).run();
-        return json(req, { council, ...(await stats(env)) });
+        if (typeof vicroads !== "boolean") return json(req, { error: "vicroads must be true or false" }, 400);
+        await env.DB.prepare("UPDATE potholes SET council = ?, vicroads = ? WHERE id = ?").bind(council || null, vicroads ? 1 : 0, o[1]).run();
+        return json(req, { council, vicroads, ...(await stats(env)) });
       }
       await env.DB.prepare("UPDATE potholes SET cleared_day = ? WHERE id = ? AND cleared_day IS NULL").bind(today(), o[1]).run();
       return json(req, { cleared: true, ...(await stats(env)) });

@@ -158,6 +158,9 @@ ul.councils li:first-child{border-top:none}
 .worst li{padding:1px 0}
 .worst li b{color:var(--sign);margin-left:10px;font-variant-numeric:tabular-nums}
 .worst small{display:block;color:#a3a8ad;font-size:.72rem}
+.worst-vr{margin:10px 0 0;padding-top:8px;border-top:1px solid #3a3e44;font-family:var(--head);font-weight:500;text-transform:uppercase;letter-spacing:.04em;font-size:.95rem}
+.worst-vr small{font-family:"Overpass",system-ui,sans-serif;font-weight:400;text-transform:none;letter-spacing:0;margin-top:2px}
+.worst-vr b{color:var(--sign);margin-left:10px;font-variant-numeric:tabular-nums}
 .qbtns{display:flex;flex-direction:column;gap:4px;flex:none}
 .mini.ok{color:var(--ok);border-color:var(--ok)}
 .tag.ok{background:var(--ok);color:#fff}
@@ -179,6 +182,12 @@ ul.councils li:first-child{border-top:none}
 .share-links #shFacebook{background:#1877f2;border-color:#1877f2;color:#fff}
 .share-links #shCopy{background:#f5c518;border-color:#f5c518}
 .qr img{margin-top:12px!important}
+.speedo{display:flex;flex-direction:column;align-items:center;margin-top:12px;font:inherit;color:var(--ink);background:none;border:none;padding:0;cursor:pointer}
+.speedo:disabled{cursor:default}
+.speedo-n{font-family:var(--head);font-weight:700;font-size:3.4rem;line-height:1;font-variant-numeric:tabular-nums;letter-spacing:.01em}
+.speedo-n small{font-size:1.1rem;font-weight:600;margin-left:6px;color:var(--muted);letter-spacing:.06em}
+.speedo-note{font-size:.75rem;color:var(--muted);margin-top:2px;text-align:center}
+.speedo.stale .speedo-n{color:var(--muted)}
 .awake{display:inline-flex;align-items:center;gap:8px;margin-top:10px;font:inherit;font-size:.85rem;font-weight:700;padding:6px 12px;border-radius:999px;border:1px solid var(--line);background:var(--surface);color:var(--muted);cursor:pointer}
 .awake[hidden]{display:none}
 .awake-dot{width:9px;height:9px;border-radius:50%;background:var(--muted)}

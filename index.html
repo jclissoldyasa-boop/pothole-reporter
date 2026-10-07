@@ -44,6 +44,10 @@
       <img src="sign.webp" width="640" height="636" alt="" draggable="false">
       <span class="vh">Pothole! Tap to log it</span>
     </button>
+    <button class="speedo stale" id="speedo" type="button" aria-label="GPS speed">
+      <span class="speedo-n" aria-live="off"><span id="speedN">--</span><small>km/h</small></span>
+      <span class="speedo-note" id="speedNote">Estimated GPS speed. Always go by your bike's speedo.</span>
+    </button>
     <button class="awake" id="awakeBtn" type="button" aria-pressed="false" hidden><span class="awake-dot" aria-hidden="true"></span><span id="awakeText">Screen stays on</span></button>
     <div class="status" id="status" role="status" aria-live="polite">Phone mounted, one tap, eyes back on the road. Or have your pillion tap.</div>
   </div>
@@ -62,7 +66,8 @@
       <div class="worst" id="worst" hidden>
         <span class="worst-h">Worst offenders</span>
         <ol id="worstList"></ol>
-        <small>Councils with the most potholes reported on their roads</small>
+        <small>Councils with the most potholes reported in their area, VicRoads roads included</small>
+        <p class="worst-vr" id="worstVr" hidden>VicRoads roads <b id="worstVrN"></b><small>Potholes on VicRoads roads statewide. They also count in their council's area above.</small></p>
       </div>
     </div>
     <div class="share-row">

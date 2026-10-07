@@ -13,7 +13,7 @@ const schema = readFileSync(new URL("../migrations/0001_init.sql", import.meta.u
 ok(!/\b(name|email|phone|ip|address|time|user)\w*\s+(text|integer|real)/.test(schema.replace(/--.*$/gm, "")), "schema has no personal-data columns");
 
 const stats = await (await fetch(BASE + "/api/stats")).json();
-ok(JSON.stringify(Object.keys(stats).sort()) === '["fixed","total","week","worst"]', "stats returns only counts and the council table");
+ok(JSON.stringify(Object.keys(stats).sort()) === '["fixed","total","vicroads","week","worst"]', "stats returns only counts and the council table");
 
 const a = await post(JSON.stringify({ lat: -37.6870123, lng: 144.5620456, name: "Sam", phone: "0400 000 000", email: "sam@example.com" }));
 const ra = await a.json();
@@ -55,6 +55,10 @@ ok((await own(ra.id, "council", rb.key, { council: "melton" })).status === 403, 
 ok((await own(ra.id, "council", ra.key, { council: "<script>" })).status === 400, "only real Victorian councils accepted");
 const tagged = await (await own(ra.id, "council", ra.key, { council: "melton" })).json();
 ok(tagged.worst.some(w => w[0] === "melton" && w[1] >= 1), "council shows in worst offenders");
+ok((await own(ra.id, "council", ra.key, { council: "melton", vicroads: "yes" })).status === 400, "vicroads flag must be true or false");
+const vr = await (await own(ra.id, "council", ra.key, { council: "melton", vicroads: true })).json();
+ok(vr.vicroads === tagged.vicroads + 1 && vr.worst.find(w => w[0] === "melton")[1] === tagged.worst.find(w => w[0] === "melton")[1],
+  "VicRoads pothole counts in its council area and the VicRoads total");
 const d = await (await post(JSON.stringify({ lat: -37.72, lng: 144.62 }))).json();
 ok((await own(d.id, "fixed", ra.key)).status === 403, "can't mark another phone's report fixed");
 const fx = await (await own(d.id, "fixed", d.key)).json();

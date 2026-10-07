@@ -145,10 +145,35 @@
   function startWarm(){
     if(warmWatch!==null||!("geolocation" in navigator))return;
     warmWatch=navigator.geolocation.watchPosition(p=>{
-      live={lat:p.coords.latitude,lng:p.coords.longitude,acc:p.coords.accuracy,heading:p.coords.heading,speed:p.coords.speed||0,t:Date.now()};
+      live={lat:p.coords.latitude,lng:p.coords.longitude,acc:p.coords.accuracy,heading:p.coords.heading,speed:p.coords.speed||0,spd:p.coords.speed,t:Date.now()};
       recent.push(live);recent=recent.filter(f=>Date.now()-f.t<20000);
+      showSpeed();
     },()=>{},{enableHighAccuracy:true,maximumAge:0});
+    $("speedo").disabled=true;
   }
+
+  // ---------- GPS speedometer ----------
+  // An estimate from the same GPS that logs potholes. The phone's own speed reading is used when it gives one,
+  // otherwise it's worked out from the last few seconds of fixes. Dashes when there's no recent fix.
+  function gpsSpeed(){
+    if(!live||Date.now()-live.t>5000)return null;
+    if(live.spd!=null&&!isNaN(live.spd))return live.spd*3.6;
+    const o=recent.find(f=>live.t-f.t>=2000&&live.t-f.t<=8000);
+    if(!o||live.acc>30||o.acc>30)return null;
+    return dist(o,live)/((live.t-o.t)/1000)*3.6;
+  }
+  function showSpeed(){
+    const v=gpsSpeed();
+    $("speedN").textContent=v==null?"--":String(v<3?0:Math.round(v));
+    $("speedo").classList.toggle("stale",v==null);
+  }
+  setInterval(showSpeed,2000);
+  // Starts straight away if location is already allowed. Otherwise a tap on the speedo (or the first pothole) starts it,
+  // so nobody gets a location prompt just for opening the page.
+  $("speedo").onclick=()=>{startWarm();$("speedNote").textContent="Estimated GPS speed. Always go by your bike's speedo."};
+  if(navigator.permissions&&navigator.permissions.query)navigator.permissions.query({name:"geolocation"}).then(p=>{
+    if(p.state==="granted")startWarm();else $("speedNote").textContent="Tap to show GPS speed (needs location). Estimate only, always go by your bike's speedo.";
+  }).catch(()=>{});
   function headingFrom(fix){
     if(fix.heading!=null&&!isNaN(fix.heading)&&fix.speed>1)return fix.heading;
     const older=recent.filter(f=>fix.t-f.t>2000&&fix.t-f.t<15000);
@@ -430,17 +455,19 @@
       save();renderQueue();renderHistory();renderCouncils();
     });
   }
-  // Tell the map server which council's road each pothole is on (core name), for the worst-offenders table.
-  function councilKey(q){return q.auth==="council"&&VIC[coreName(q.council)]?coreName(q.council):""}
+  // Tell the map server which council's area each pothole is in (core name), and whether it's a VicRoads road.
+  // Worst offenders counts everything in the area; VicRoads roads also get their own total.
+  function councilKey(q){return VIC[coreName(q.council)]?coreName(q.council):""}
+  const syncKey=q=>councilKey(q)+"|"+(q.auth==="vicroads"?"vicroads":"");
   async function syncCouncils(){
     if(!navigator.onLine)return;
     const all=[...S.queue,...S.history.flatMap(h=>h.items||[])];
     for(const q of all){
       if(!q.mapId||q.deleted||q.councilSyncing||q.lookup==="pending")continue;
-      const want=councilKey(q);if((q.councilSent||"")===want)continue;
+      const want=syncKey(q);if((q.councilSent||"")===want)continue;
       q.councilSyncing=true;
       try{
-        const r=await fetch(API+"/api/potholes/"+encodeURIComponent(q.mapId)+"/council",{method:"POST",headers:{"Content-Type":"application/json","X-Delete-Key":q.mapKey},body:JSON.stringify({council:want})});
+        const r=await fetch(API+"/api/potholes/"+encodeURIComponent(q.mapId)+"/council",{method:"POST",headers:{"Content-Type":"application/json","X-Delete-Key":q.mapKey},body:JSON.stringify({council:councilKey(q),vicroads:q.auth==="vicroads"})});
         if(r.ok){q.councilSent=want;setStats(await r.json())}else if(r.status===403||r.status===400)q.councilSent=want;
       }catch(e){}
       finally{delete q.councilSyncing;save()}
@@ -526,13 +553,14 @@
   function setStats(d){
     if(!d||typeof d.total!=="number")return;
     const worst=(Array.isArray(d.worst)?d.worst:[]).filter(w=>Array.isArray(w)&&VIC[w[0]]).map(w=>[w[0],Math.max(0,Math.floor(+w[1])||0)]).slice(0,3);
-    S.stats={total:d.total,week:d.week||0,fixed:d.fixed||0,worst};save();renderStats();
+    S.stats={total:d.total,week:d.week||0,fixed:d.fixed||0,vicroads:Math.max(0,Math.floor(+d.vicroads)||0),worst};save();renderStats();
   }
   function renderStats(){
     const s=S.stats,n=x=>(+x||0).toLocaleString("en-AU");
     $("gcTotal").textContent=s?n(s.total):"\u2013";$("gcWeek").textContent=s&&s.week?n(s.week)+" this week":"";
     $("gcFixed").textContent=s?n(s.fixed):"\u2013";
-    const w=(s&&s.worst)||[],ol=$("worstList");ol.innerHTML="";$("worst").hidden=!w.length;
+    const w=(s&&s.worst)||[],vr=(s&&s.vicroads)||0,ol=$("worstList");ol.innerHTML="";$("worst").hidden=!w.length&&!vr;
+    $("worstVr").hidden=!vr;$("worstVrN").textContent=n(vr);
     w.forEach(([k,c])=>{const li=document.createElement("li");const nm=document.createElement("span");nm.textContent=shortCouncil(VIC[k].name);
       const b=document.createElement("b");b.textContent=n(c);li.append(nm,b);ol.append(li)});
   }
