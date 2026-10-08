@@ -63,6 +63,13 @@ async function overLimit(req, env) {
   return row.n > POSTS_PER_HOUR;
 }
 
+// Direction of travel: whole degrees, rounded to 10. Missing means unknown; anything else is refused.
+function headingOf(v) {
+  if (v === undefined || v === null) return { ok: true, h: null };
+  if (typeof v !== "number" || !Number.isFinite(v) || v < 0 || v >= 360) return { ok: false };
+  return { ok: true, h: (Math.round(v / 10) * 10) % 360 };
+}
+
 async function stats(env) {
   const now = today();
   const week = new Date(Date.parse(now) - 6 * 86400000).toISOString().slice(0, 10);
@@ -105,13 +112,13 @@ export default {
       const now = today();
       const since = new Date(Date.parse(now) - (days - 1) * 86400000).toISOString().slice(0, 10);
       const { results } = await env.DB.prepare(
-        "SELECT p.id, p.lat, p.lng, p.day, " +
+        "SELECT p.id, p.lat, p.lng, p.day, p.heading, " +
         "COALESCE(SUM(f.kind = 'gone'), 0) AS gone, COALESCE(SUM(f.kind = 'fixed'), 0) AS fixed, COALESCE(SUM(f.kind = 'there'), 0) AS there " +
         "FROM potholes p LEFT JOIN flags f ON f.pothole_id = p.id " +
         "WHERE p.day >= ? AND p.cleared_day IS NULL GROUP BY p.id ORDER BY p.day DESC LIMIT ?"
       ).bind(since, MAX_POINTS).all();
-      // [lat, lng, daysAgo, id, gone, "fixed", still there]. The id is public: it only lets riders vote.
-      const points = results.map(r => [r.lat, r.lng, daysAgo(r.day, now), r.id, r.gone, r.fixed, r.there]);
+      // [lat, lng, daysAgo, id, gone, "fixed", still there, heading or null]. The id is public: it only lets riders vote.
+      const points = results.map(r => [r.lat, r.lng, daysAgo(r.day, now), r.id, r.gone, r.fixed, r.there, r.heading]);
       return json(req, { days, points, clearAt: CLEAR_AT, ...(await stats(env)) }, 200, { "Cache-Control": "public, max-age=30" });
     }
 
@@ -125,11 +132,13 @@ export default {
           lat < BOUNDS.latMin || lat > BOUNDS.latMax || lng < BOUNDS.lngMin || lng > BOUNDS.lngMax) {
         return json(req, { error: "location outside Australia" }, 400);
       }
+      const hd = headingOf(body.heading);
+      if (!hd.ok) return json(req, { error: "heading must be 0 to 359 degrees" }, 400);
       if (await overLimit(req, env)) return json(req, { error: "too many reports, try later" }, 429);
       const id = randomId(9), key = randomId(18);
       // Rounded to about 10 m: plenty to find a pothole, too coarse to pick out a house.
-      await env.DB.prepare("INSERT INTO potholes (id, lat, lng, day, key_hash) VALUES (?, ?, ?, ?, ?)")
-        .bind(id, Math.round(lat * 1e4) / 1e4, Math.round(lng * 1e4) / 1e4, today(), await sha256(key)).run();
+      await env.DB.prepare("INSERT INTO potholes (id, lat, lng, day, key_hash, heading) VALUES (?, ?, ?, ?, ?, ?)")
+        .bind(id, Math.round(lat * 1e4) / 1e4, Math.round(lng * 1e4) / 1e4, today(), await sha256(key), hd.h).run();
       return json(req, { id, key, ...(await stats(env)) }, 201);
     }
 
@@ -158,18 +167,22 @@ export default {
       return json(req, { cleared, clearAt: CLEAR_AT, votes: v, ...(await stats(env)) });
     }
 
-    // Owner-only: set the council area and whether it's a VicRoads road, or mark it fixed straight away.
+    // Owner-only: set the council area, whether it's a VicRoads road and the direction of travel, or mark it fixed straight away.
     const o = url.pathname.match(/^\/api\/potholes\/([A-Za-z0-9_-]{6,32})\/(council|fixed)$/);
     if (o && req.method === "POST") {
       const raw = await req.text();
       if (raw.length > MAX_BODY) return json(req, { error: "too large" }, 413);
       if (!(await ownerOk(req, env, o[1]))) return json(req, { error: "not yours" }, 403);
       if (o[2] === "council") {
-        let council, vicroads;
-        try { ({ council, vicroads = false } = JSON.parse(raw)); } catch { return json(req, { error: "bad json" }, 400); }
+        let council, vicroads, heading;
+        try { ({ council, vicroads = false, heading } = JSON.parse(raw)); } catch { return json(req, { error: "bad json" }, 400); }
         if (council !== "" && !COUNCILS.has(council)) return json(req, { error: "unknown council" }, 400);
         if (typeof vicroads !== "boolean") return json(req, { error: "vicroads must be true or false" }, 400);
-        await env.DB.prepare("UPDATE potholes SET council = ?, vicroads = ? WHERE id = ?").bind(council || null, vicroads ? 1 : 0, o[1]).run();
+        const hd = headingOf(heading);
+        if (!hd.ok) return json(req, { error: "heading must be 0 to 359 degrees" }, 400);
+        // Older apps don't send a heading, so leave any saved one alone rather than wiping it.
+        await env.DB.prepare("UPDATE potholes SET council = ?, vicroads = ?, heading = COALESCE(?, heading) WHERE id = ?")
+          .bind(council || null, vicroads ? 1 : 0, hd.h, o[1]).run();
         return json(req, { council, vicroads, ...(await stats(env)) });
       }
       await env.DB.prepare("UPDATE potholes SET cleared_day = ? WHERE id = ? AND cleared_day IS NULL").bind(today(), o[1]).run();

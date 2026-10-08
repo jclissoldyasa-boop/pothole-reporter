@@ -23,7 +23,7 @@ const rb = await b.json();
 
 const list = await (await fetch(BASE + "/api/potholes?days=1")).json();
 const raw = JSON.stringify(list);
-ok(list.points.every(p => Array.isArray(p) && p.length === 7 && typeof p[3] === "string" && [0, 1, 2, 4, 5, 6].every(i => typeof p[i] === "number")), "map points are only location, age, public id and vote counts");
+ok(list.points.every(p => Array.isArray(p) && p.length === 8 && typeof p[3] === "string" && [0, 1, 2, 4, 5, 6].every(i => typeof p[i] === "number") && (p[7] === null || typeof p[7] === "number")), "map points are only location, age, public id, vote counts and direction");
 ok(!/"(name|phone|email|key|key_hash|voter|ip)"/.test(raw) && !["Sam", "0400 000 000", "sam@example.com", ra.key].some(x => raw.includes(x)), "map data has no names, contacts, keys or voters");
 ok(list.points.some(p => p[0] === -37.687 && p[1] === 144.562), "locations rounded to ~10 m");
 
@@ -57,6 +57,17 @@ const tagged = await (await own(ra.id, "council", ra.key, { council: "melton" })
 ok(tagged.worst.some(w => w[0] === "melton" && w[1] >= 1), "council shows in worst offenders");
 ok((await own(ra.id, "council", ra.key, { council: "melton", vicroads: "yes" })).status === 400, "vicroads flag must be true or false");
 const vr = await (await own(ra.id, "council", ra.key, { council: "melton", vicroads: true })).json();
+// Direction of travel: rounded to 10 degrees, junk refused, an older app's update doesn't wipe it.
+ok((await post(JSON.stringify({ lat: -37.7, lng: 144.6, heading: "north" }))).status === 400, "junk heading refused");
+ok((await post(JSON.stringify({ lat: -37.7, lng: 144.6, heading: 360 }))).status === 400, "out-of-range heading refused");
+const hp = await (await post(JSON.stringify({ lat: -37.7012, lng: 144.6034, heading: 87 }))).json();
+const hpt = () => fetch(BASE + "/api/potholes?days=1").then(r => r.json()).then(d => d.points.find(p => p[3] === hp.id));
+ok((await hpt())[7] === 90, "heading saved rounded to 10 degrees");
+await own(hp.id, "council", hp.key, { council: "melton" });
+ok((await hpt())[7] === 90, "update without a heading keeps the saved one");
+await own(hp.id, "council", hp.key, { council: "melton", heading: 273 });
+ok((await hpt())[7] === 270, "owner can fill in the heading later");
+await del(hp.id, hp.key);
 ok(vr.vicroads === tagged.vicroads + 1 && vr.worst.find(w => w[0] === "melton")[1] === tagged.worst.find(w => w[0] === "melton")[1],
   "VicRoads pothole counts in its council area and the VicRoads total");
 const d = await (await post(JSON.stringify({ lat: -37.72, lng: 144.62 }))).json();

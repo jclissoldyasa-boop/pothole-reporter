@@ -210,3 +210,21 @@ ul.councils li:first-child{border-top:none}
 .mock-hold{align-items:flex-start;background:none;border:none;padding:0}
 .mock-hold img{border-radius:12px}
 .mock-hold .pop{display:flex;flex-direction:column;gap:2px;background:var(--field);border:1px solid var(--line);border-radius:10px;padding:6px;padding:4px}
+
+/* Pothole-ahead warnings */
+.pills{display:flex;flex-wrap:wrap;justify-content:center;gap:0 8px}
+.ahead{position:fixed;left:12px;right:12px;top:calc(12px + env(safe-area-inset-top,0px));z-index:50;display:flex;align-items:center;justify-content:space-between;gap:12px;
+  padding:14px 18px;border-radius:12px;background:var(--sign);color:var(--sign-ink);border:4px solid var(--asphalt);box-shadow:0 8px 24px rgba(0,0,0,.45);
+  font-family:var(--head);text-transform:uppercase;max-width:536px;margin:0 auto}
+.ahead[hidden]{display:none}
+.ahead-h{font-weight:700;font-size:1.6rem;letter-spacing:.03em;line-height:1}
+.ahead b{font-weight:700;font-size:2.2rem;font-variant-numeric:tabular-nums;line-height:1;white-space:nowrap}
+.passed{position:fixed;left:12px;right:12px;bottom:calc(12px + env(safe-area-inset-bottom,0px));z-index:50;padding:14px;border-radius:12px;background:var(--surface);
+  border:2px solid var(--sign);box-shadow:0 8px 24px rgba(0,0,0,.45);max-width:536px;margin:0 auto}
+.passed[hidden]{display:none}
+.passed p{margin:0 0 10px;font-weight:800;text-align:center}
+.passed .row{display:flex;gap:8px}
+.passed .btn{flex:1;padding:16px 6px;font-size:1.05rem}
+.passed #passSkip{flex:.7;font-size:.9rem}
+.btn.danger-fill{background:var(--flame);border-color:var(--flame);color:var(--flame-ink)}
+.btn.ok-fill{background:#2fbf71;border-color:#2fbf71;color:#0b2e17}

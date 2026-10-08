@@ -18,7 +18,7 @@ Push changes to `main`; GitHub Pages republishes. The phone picks up the new ver
 
 ## Riders' map and counter
 
-- Each logged pothole's spot is sent to a small Cloudflare Worker (`server/`) with a D1 database. The server keeps only the latitude/longitude and the day. No name, phone, email, road, time of day or IP address.
+- Each logged pothole's spot is sent to a small Cloudflare Worker (`server/`) with a D1 database. The server keeps only the latitude/longitude, the direction of travel (to the nearest 10°, so pothole-ahead warnings skip the other side of the road) and the day. No name, phone, email, road, time of day or IP address.
 - The header counter shows the total logged by all riders and how many this week.
 - The map (Leaflet + OpenStreetMap tiles) shows potholes from the last 7 days, 30 days, year or all time, coloured by age.
 - Tap a pin to say the pothole is Gone, "Fixed" (a dodgy patch, in quotes), or Still there. One vote per rider (connection) per pothole, changeable. Once gone + "fixed" votes are 3 more than still-there votes, it comes off the map and counts towards the header's "fixed" total. Votes store only a secret-salted hash of IP + pothole id. `CLEAR_AT` in `server/src/worker.js` sets the threshold.

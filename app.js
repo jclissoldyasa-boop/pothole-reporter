@@ -147,7 +147,7 @@
     warmWatch=navigator.geolocation.watchPosition(p=>{
       live={lat:p.coords.latitude,lng:p.coords.longitude,acc:p.coords.accuracy,heading:p.coords.heading,speed:p.coords.speed||0,spd:p.coords.speed,t:Date.now()};
       recent.push(live);recent=recent.filter(f=>Date.now()-f.t<20000);
-      showSpeed();
+      showSpeed();checkAhead();
     },()=>{},{enableHighAccuracy:true,maximumAge:0});
     $("speedo").disabled=true;
   }
@@ -458,7 +458,8 @@
   // Tell the map server which council's area each pothole is in (core name), and whether it's a VicRoads road.
   // Worst offenders counts everything in the area; VicRoads roads also get their own total.
   function councilKey(q){return VIC[coreName(q.council)]?coreName(q.council):""}
-  const syncKey=q=>councilKey(q)+"|"+(q.auth==="vicroads"?"vicroads":"");
+  // The direction of travel goes along too, so older reports pick it up for pothole-ahead warnings.
+  const syncKey=q=>councilKey(q)+"|"+(q.auth==="vicroads"?"vicroads":"")+"|"+(q.bearing==null?"":q.bearing);
   async function syncCouncils(){
     if(!navigator.onLine)return;
     const all=[...S.queue,...S.history.flatMap(h=>h.items||[])];
@@ -467,7 +468,7 @@
       const want=syncKey(q);if((q.councilSent||"")===want)continue;
       q.councilSyncing=true;
       try{
-        const r=await fetch(API+"/api/potholes/"+encodeURIComponent(q.mapId)+"/council",{method:"POST",headers:{"Content-Type":"application/json","X-Delete-Key":q.mapKey},body:JSON.stringify({council:councilKey(q),vicroads:q.auth==="vicroads"})});
+        const r=await fetch(API+"/api/potholes/"+encodeURIComponent(q.mapId)+"/council",{method:"POST",headers:{"Content-Type":"application/json","X-Delete-Key":q.mapKey},body:JSON.stringify({council:councilKey(q),vicroads:q.auth==="vicroads",heading:q.bearing==null?null:+q.bearing})});
         if(r.ok){q.councilSent=want;setStats(await r.json())}else if(r.status===403||r.status===400)q.councilSent=want;
       }catch(e){}
       finally{delete q.councilSyncing;save()}
@@ -519,7 +520,7 @@
     if(!S.me.share||q.mapId||q.sharing||(q.shareFail||0)>=3||!navigator.onLine)return;
     q.sharing=true;
     try{
-      const r=await fetch(API+"/api/potholes",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({lat:+q.lat,lng:+q.lng})});
+      const r=await fetch(API+"/api/potholes",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({lat:+q.lat,lng:+q.lng,heading:q.bearing==null?null:+q.bearing})});
       if(r.status===400){q.shareFail=3;return}
       if(!r.ok)throw new Error("http "+r.status);
       const d=await r.json();q.mapId=d.id;q.mapKey=d.key;setStats(d);
@@ -667,6 +668,122 @@
       if(meDot)meDot.setLatLng(ll);else meDot=L.circleMarker(ll,{radius:7,weight:3,color:"#fff",fillColor:"#1d6fd8",fillOpacity:1}).addTo(mapObj).bindPopup("You are here");
     },()=>{$("mapCount").textContent="Location is blocked for this site."},{enableHighAccuracy:true,timeout:15000,maximumAge:60000});
   };
+
+
+  // ---------- pothole-ahead warnings ----------
+  // Keeps a copy of the riders' map on the phone (so it works with no signal) and checks every GPS fix for a pothole
+  // in front of you: within 25° of your direction of travel and about 8 seconds away. Sound first (voice or beep),
+  // plus a big banner. Once you've ridden past, a card asks whether it's still there, which feeds the map's votes.
+  // The other side of the road: a pothole logged with a direction only warns riders going the same way (within 45°).
+  // One with no direction only warns if it's almost on your line, and never asks "still there?", because a rider on
+  // the other carriageway can't see it and would wrongly vote it gone.
+  const AHEAD_LS="pothole_reporter_ahead",CONE=25,LEAD_S=8,MIN_KMH=15,SAME_WAY=45,NO_DIR_SIDE=8;
+  let aheadPts=[];try{aheadPts=JSON.parse(localStorage.getItem(AHEAD_LS))||[]}catch(e){}
+  const warned={};let target=null,passedTimer=null,audio=null;
+  const wantWarn=()=>S.me.warn!==false,soundMode=()=>S.me.warnSound||"voice";
+  async function fetchAhead(){
+    if(!navigator.onLine)return;
+    try{
+      const r=await fetch(API+"/api/potholes?days=365");if(!r.ok)return;
+      const d=await r.json();
+      aheadPts=(Array.isArray(d.points)?d.points:[]).map(p=>[+p[0],+p[1],/^[A-Za-z0-9_-]{6,32}$/.test(p[3])?p[3]:"",p[7]==null||!Number.isFinite(+p[7])?null:+p[7]])
+        .filter(p=>Number.isFinite(p[0])&&Number.isFinite(p[1])&&p[2]);
+      try{localStorage.setItem(AHEAD_LS,JSON.stringify(aheadPts))}catch(e){}
+    }catch(e){}
+  }
+  const angle=(a,b)=>{const d=Math.abs(a-b)%360;return d>180?360-d:d};
+  function checkAhead(){
+    if(!live)return;
+    if(target){
+      // Follow the one we warned about until it's behind us, then ask about it.
+      const p={lat:target.lat,lng:target.lng},d=dist(live,p),hd=headingFrom(live);
+      target.min=Math.min(target.min,d);
+      if(hd!=null&&d<120&&angle(bearing(live,p),hd)>90&&target.min<60){if(target.ask)passedIt(target);target=null;hideAhead();return}
+      if(d>target.min+150||Date.now()-target.t>40000){target=null;hideAhead();return}
+      $("aheadDist").textContent=Math.max(10,Math.round(d/10)*10)+" m";
+      return;
+    }
+    if(!wantWarn())return;
+    const kmh=gpsSpeed(),hd=headingFrom(live);
+    if(kmh==null||kmh<MIN_KMH||hd==null||live.acc>30)return;
+    const reach=Math.max(80,kmh/3.6*LEAD_S),box=reach/111000*1.5;
+    let best=null;
+    for(const [lat,lng,id,ph] of aheadPts){
+      if(Math.abs(lat-live.lat)>box||Math.abs(lng-live.lng)>box*1.4)continue;
+      if(warned[id]&&Date.now()-warned[id]<10*60000)continue;
+      if(ph!=null&&angle(ph,hd)>SAME_WAY)continue;
+      const p={lat,lng},d=dist(live,p),off=angle(bearing(live,p),hd);
+      if(d>reach||d<15||off>CONE)continue;
+      // How far to the side of your line it is. No direction saved: only count it if it's right on your line.
+      if(ph==null&&d*Math.sin(off*rad)>NO_DIR_SIDE)continue;
+      if(!best||d<best.d)best={lat,lng,id,d,ask:ph!=null};
+    }
+    if(!best)return;
+    warned[best.id]=Date.now();
+    target={...best,min:best.d,t:Date.now()};
+    warnNow(best.d);
+  }
+  function warnNow(d){
+    const m=Math.max(10,Math.round(d/10)*10);
+    $("aheadDist").textContent=m+" m";$("ahead").hidden=false;
+    const mode=soundMode();
+    if(mode==="voice"&&"speechSynthesis" in window){
+      try{speechSynthesis.cancel();const u=new SpeechSynthesisUtterance("Pothole ahead. "+(Math.round(d/50)*50||50)+" metres");u.lang="en-AU";u.rate=1.1;speechSynthesis.speak(u)}catch(e){}
+    }else if(mode!=="off")beep();
+    if(navigator.vibrate)try{navigator.vibrate([200,100,200])}catch(e){}
+  }
+  function hideAhead(){$("ahead").hidden=true}
+  // Browsers only allow sound after the first touch, so the audio is set up then.
+  function unlockAudio(){
+    if(audio)return;
+    try{const A=window.AudioContext||window.webkitAudioContext;if(A){audio=new A();audio.resume()}}catch(e){}
+    if("speechSynthesis" in window)try{speechSynthesis.speak(new SpeechSynthesisUtterance(""))}catch(e){}
+    renderWarn();
+  }
+  document.addEventListener("pointerdown",unlockAudio,{passive:true});
+  function beep(){
+    if(!audio)return;
+    const t=audio.currentTime;
+    [0,.22].forEach(o=>{const g=audio.createGain(),v=audio.createOscillator();v.type="square";v.frequency.value=1100;
+      g.gain.setValueAtTime(.0001,t+o);g.gain.exponentialRampToValueAtTime(.4,t+o+.02);g.gain.exponentialRampToValueAtTime(.0001,t+o+.16);
+      v.connect(g).connect(audio.destination);v.start(t+o);v.stop(t+o+.18)});
+  }
+  function passedIt(p){
+    clearTimeout(passedTimer);
+    const box=$("passed");box.hidden=false;box.dataset.id=p.id;
+    passedTimer=setTimeout(()=>{box.hidden=true},15000);
+  }
+  async function passVote(kind){
+    const box=$("passed"),id=box.dataset.id;box.hidden=true;clearTimeout(passedTimer);
+    if(!id||!kind)return;
+    try{
+      const r=await fetch(API+"/api/potholes/"+encodeURIComponent(id)+"/flag",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({kind})});
+      if(!r.ok){toast(r.status===429?"Too many votes for now, try later.":"Couldn't send that. Check your signal.");return}
+      const d=await r.json();setStats(d);
+      S.votes[id]=kind;const ids=Object.keys(S.votes);if(ids.length>500)delete S.votes[ids[0]];save();
+      if(d.cleared)aheadPts=aheadPts.filter(p=>p[2]!==id);
+      toast(d.cleared?"Off the map. Nice one.":QUIPS[kind]);
+    }catch(e){toast("Couldn't send that. Check your signal.")}
+  }
+  $("passThere").onclick=()=>passVote("there");
+  $("passGone").onclick=()=>passVote("gone");
+  $("passSkip").onclick=()=>passVote("");
+  const SOUNDS=[["voice","Voice"],["beep","Beep"],["off","Silent"]];
+  function renderWarn(){
+    const on=wantWarn(),b=$("warnBtn");
+    b.setAttribute("aria-pressed",on);b.classList.toggle("on",on);
+    $("warnText").textContent=on?(soundMode()!=="off"&&!audio?"Pothole warnings (tap anywhere for sound)":"Pothole warnings on"):"Pothole warnings off";
+    $("soundBtn").hidden=!on;
+    $("soundText").textContent="Sound: "+SOUNDS.find(x=>x[0]===soundMode())[1];
+  }
+  $("warnBtn").onclick=()=>{S.me.warn=!wantWarn();save();renderWarn();if(wantWarn()){startWarm();fetchAhead()}else{target=null;hideAhead()}
+    toast(wantWarn()?"You'll get a warning before reported potholes.":"Pothole warnings off.")};
+  $("soundBtn").onclick=()=>{const i=SOUNDS.findIndex(x=>x[0]===soundMode());S.me.warnSound=SOUNDS[(i+1)%SOUNDS.length][0];save();renderWarn();
+    if(soundMode()==="voice"&&"speechSynthesis" in window)try{speechSynthesis.speak(new SpeechSynthesisUtterance("Pothole ahead"))}catch(e){}
+    else if(soundMode()==="beep")beep()};
+  renderWarn();
+  if(wantWarn())fetchAhead();
+  setInterval(()=>{if(wantWarn()&&document.visibilityState==="visible")fetchAhead()},15*60000);
 
   // ---------- keep the screen on while the app is open ----------
   // Uses the Screen Wake Lock API. The phone drops the lock whenever the app goes to the background,
