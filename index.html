@@ -119,7 +119,7 @@
     </div>
     <p class="hint swipe-hint" id="swipeHint" hidden>Pothole been fixed? Tap <b>Fixed</b>: it comes off the map but still counts. <b>Delete</b> (or swipe left) is for mistakes: it also removes the pothole from the riders' map and the counts.</p>
     <p class="sendmsg" id="sendMsg" role="status" aria-live="polite"></p>
-    <p class="hint fb-nudge" id="fbNudge" hidden>How's the app working for you? <button class="linkish" id="fbNudgeBtn" type="button">Send feedback</button></p>
+    <p class="hint fb-nudge" id="fbNudge" hidden>How's the app working for you? <a class="linkish fb-mail" href="mailto:j.clissoldyasa@gmail.com">Send feedback</a></p>
   </section>
 
   <section class="card">
@@ -205,23 +205,8 @@
     </details>
   </section>
 
-  <section class="card" id="fbBox" hidden>
-    <h2>Feedback</h2>
-    <p class="hint">Something not working, or an idea to make it better? It goes straight to the person who made the app.</p>
-    <label for="fbMsg">Your message</label>
-    <textarea id="fbMsg" rows="5" maxlength="2000"></textarea>
-    <label for="fbContact">Email or name, if you'd like a reply (optional)</label>
-    <input id="fbContact" autocomplete="email" maxlength="200">
-    <p class="hint">Your phone type (like "Android, Chrome") is sent too, to help track down bugs. Nothing else.</p>
-    <div class="row fb-row">
-      <button class="btn primary" id="fbSend" type="button">Send feedback</button>
-      <button class="btn" id="fbCancel" type="button">Cancel</button>
-    </div>
-    <p class="sendmsg" id="fbMsgStatus" role="status" aria-live="polite"></p>
-  </section>
-
   <p class="footnote">Pull over before you fiddle with the phone. Urgent danger on the road? Call 13 11 70 (24/7). Emergencies, call 000.<br>Map data © OpenStreetMap contributors. Melton sorting also uses the council's list of VicRoads-controlled roads.</p>
-  <p class="footnote"><button class="linkish fb-link" id="fbLink" type="button">Feedback</button></p>
+  <p class="footnote"><a class="linkish fb-link fb-mail" href="mailto:j.clissoldyasa@gmail.com">Feedback</a></p>
 </div>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 <div class="ahead" id="ahead" role="alert" hidden><span class="ahead-h">Pothole ahead</span><b id="aheadDist"></b></div>

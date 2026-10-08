@@ -90,24 +90,6 @@ ok((await post(JSON.stringify({ lat: "-37.7; DROP TABLE potholes", lng: 144.6 })
 ok((await fetch(BASE + "/api/potholes/" + ra.id, { method: "PUT" })).status === 404, "no way to edit reports");
 ok((await fetch(BASE + "/api/rate")).status === 404, "rate-limit table not exposed");
 
-// Feedback: anyone can send, only the owner's inbox key can read or delete.
-const fbPost = body => fetch(BASE + "/api/feedback", { method: "POST", headers: { "Content-Type": "application/json" }, body });
-const INBOX = process.env.INBOX_KEY || (readFileSync(new URL("../.dev.vars", import.meta.url), "utf8").match(/INBOX_KEY=(\S+)/) || [])[1];
-const inbox = (key, opt = {}) => fetch(BASE + "/api/feedback" + (opt.id ? "/" + opt.id : ""), { method: opt.method || "GET", headers: key ? { Authorization: "Bearer " + key } : {} });
-ok((await fbPost(JSON.stringify({ message: "   " }))).status === 400, "empty feedback refused");
-ok((await fbPost(JSON.stringify({ message: "x".repeat(5000) }))).status === 413, "oversized feedback refused");
-ok((await fbPost("not json")).status === 400, "feedback bad JSON refused");
-const fs1 = await fbPost(JSON.stringify({ message: "Test <b>feedback</b>", contact: "sam@example.com", device: "Android, Chrome", ip: "1.2.3.4" }));
-ok(fs1.status === 201, "feedback accepted");
-ok((await inbox()).status === 403 && (await inbox("wrong-key-wrong-key-wrong")).status === 403, "inbox refuses missing or wrong key");
-const fbList = (await (await inbox(INBOX)).json()).feedback;
-const mine = fbList.find(r => r.message === "Test <b>feedback</b>");
-ok(mine && mine.contact === "sam@example.com" && Object.keys(mine).sort().join() === "contact,day,device,id,message", "owner reads feedback; no IP or time stored");
-ok((await inbox(null, { id: mine.id, method: "DELETE" })).status === 403, "can't delete feedback without the key");
-ok((await (await inbox(INBOX, { id: mine.id, method: "DELETE" })).json()).deleted === 1, "owner deletes feedback");
-const ib = await fetch(BASE + "/inbox");
-ok(/script-src 'self'/.test(ib.headers.get("Content-Security-Policy") || "") && !(await ib.text()).includes(INBOX), "inbox page has a strict CSP and no key in it");
-
 const pre = await fetch(BASE + "/api/potholes", { method: "OPTIONS", headers: { Origin: "https://evil.example" } });
 ok(pre.headers.get("Access-Control-Allow-Origin") !== "https://evil.example", "other websites can't use the API from a browser");
 const h = await fetch(BASE + "/api/stats");

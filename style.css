@@ -46,8 +46,8 @@ section.card{background:var(--surface);border:1px solid var(--line);border-radiu
 section.card h2{margin:0 0 10px;font-family:var(--head);text-transform:uppercase;letter-spacing:.03em;font-size:1.3rem;font-weight:700;display:flex;justify-content:space-between;align-items:baseline;gap:8px}
 section.card h2 .count{font-size:.9rem;color:var(--muted);font-weight:600}
 label{display:block;font-weight:600;font-size:.88rem;margin:10px 0 4px}
-input,select,textarea{width:100%;font:inherit;font-size:16px;color:var(--ink);background:var(--field);border:1px solid var(--line);border-radius:6px;padding:9px 11px}
-input:focus-visible,select:focus-visible,textarea:focus-visible,button:focus-visible,a:focus-visible{outline:3px solid var(--sign);outline-offset:1px}
+input,select{width:100%;font:inherit;font-size:16px;color:var(--ink);background:var(--field);border:1px solid var(--line);border-radius:6px;padding:9px 11px}
+input:focus-visible,select:focus-visible,button:focus-visible,a:focus-visible{outline:3px solid var(--sign);outline-offset:1px}
 .hint{font-size:.83rem;color:var(--muted);margin:6px 0 0}
 .row{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 
@@ -228,8 +228,6 @@ ul.councils li:first-child{border-top:none}
 .passed #passSkip{flex:.7;font-size:.9rem}
 .btn.danger-fill{background:var(--flame);border-color:var(--flame);color:var(--flame-ink)}
 .btn.ok-fill{background:#2fbf71;border-color:#2fbf71;color:#0b2e17}
-textarea{resize:vertical;min-height:7em}
 .linkish{font:inherit;background:none;border:none;padding:4px 2px;color:inherit;text-decoration:underline;cursor:pointer}
 .fb-nudge .linkish{color:var(--ink);font-weight:600}
 .fb-link{color:var(--muted);font-size:.83rem}
-.fb-row{margin-top:14px}
