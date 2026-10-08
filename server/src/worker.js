@@ -13,6 +13,8 @@ const KINDS = ["gone", "fixed", "there"];
 const COUNCILS = new Set(["alpine", "ararat", "ballarat", "banyule", "bass coast", "baw baw", "bayside", "benalla", "boroondara", "brimbank", "buloke", "campaspe", "cardinia", "casey", "central goldfields", "colac otway", "corangamite", "darebin", "east gippsland", "frankston", "gannawarra", "glen eira", "glenelg", "golden plains", "greater bendigo", "greater dandenong", "greater geelong", "greater shepparton", "hepburn", "hindmarsh", "hobsons bay", "horsham", "hume", "indigo", "kingston", "knox", "latrobe", "loddon", "macedon ranges", "manningham", "mansfield", "maribyrnong", "maroondah", "melbourne", "melton", "merri bek", "mildura", "mitchell", "moira", "monash", "moonee valley", "moorabool", "mornington peninsula", "mount alexander", "moyne", "murrindindi", "nillumbik", "northern grampians", "port phillip", "pyrenees", "queenscliffe", "south gippsland", "southern grampians", "stonnington", "strathbogie", "surf coast", "swan hill", "towong", "wangaratta", "warrnambool", "wellington", "west wimmera", "whitehorse", "whittlesea", "wodonga", "wyndham", "yarra", "yarra ranges", "yarriambiack"]);
 const MAX_BODY = 512; // bytes; a report is just {"lat":..,"lng":..}
 const MAX_POINTS = 20000;
+const MAX_FEEDBACK = 4096; // bytes; a message of up to 2000 characters plus a contact
+const FEEDBACK_ROWS = 2000; // stops a flood filling the database; delete read messages to make room
 
 function cors(req) {
   const o = req.headers.get("Origin") || "";
@@ -97,6 +99,69 @@ async function votes(env, id) {
   ).bind(id).first();
   return { gone: r.gone || 0, fixed: r.fixed || 0, there: r.there || 0 };
 }
+
+// The owner's inbox key is a Worker secret (INBOX_KEY). Hashing both sides keeps the comparison constant-time.
+async function inboxOk(req, env) {
+  const got = (req.headers.get("Authorization") || "").replace(/^Bearer /, "");
+  if (!env.INBOX_KEY || env.INBOX_KEY.length < 20 || !got) return false;
+  return (await sha256(got)) === (await sha256(env.INBOX_KEY));
+}
+const text = (v, max) => typeof v === "string" ? v.trim().slice(0, max) : "";
+
+// Private feedback inbox. The key travels in the link's #fragment, which browsers never send to the server.
+const INBOX_HTML = `<!DOCTYPE html>
+<html lang="en-AU"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex"><title>Pothole Reporter feedback</title>
+<style>
+:root{--bg:#e9e7e2;--card:#fff;--ink:#17181a;--muted:#5d6267;--line:#d2cfc7;--warn:#b3261e;--sign:#f5c518}
+@media (prefers-color-scheme:dark){:root{--bg:#0f1011;--card:#1b1d20;--ink:#f1efe9;--muted:#a3a8ad;--line:#33373c;--warn:#ff8a80}}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.45 system-ui,sans-serif}
+main{max-width:640px;margin:0 auto;padding:16px}
+h1{font-size:1.3rem;margin:4px 0 12px}
+.bar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:12px}
+button{font:inherit;font-weight:600;padding:9px 14px;border-radius:8px;border:2px solid var(--ink);background:transparent;color:var(--ink);cursor:pointer}
+button.main{background:var(--sign);border-color:var(--sign);color:#141516}
+button.del{border-color:var(--warn);color:var(--warn);padding:5px 10px;font-size:.85rem}
+.msg{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:12px;margin:0 0 10px}
+.msg p{margin:0 0 8px;white-space:pre-wrap;overflow-wrap:anywhere}
+.meta{display:flex;justify-content:space-between;gap:10px;align-items:center;color:var(--muted);font-size:.85rem}
+.status{color:var(--muted)}
+</style></head><body><main>
+<h1>Rider feedback</h1>
+<div class="bar"><button class="main" id="copy" type="button" hidden>Copy all</button><span class="status" id="status" role="status">Loading…</span></div>
+<div id="list"></div>
+</main><script src="inbox.js"></script></body></html>`;
+const INBOX_JS = `(function(){
+  "use strict";
+  const key=location.hash.slice(1),$=id=>document.getElementById(id);
+  let rows=[];
+  const api=(path,opt)=>fetch("api/feedback"+path,{...opt,headers:{Authorization:"Bearer "+key}});
+  const plain=r=>r.day+(r.device?" ("+r.device+")":"")+"\n"+r.message+(r.contact?"\nReply to: "+r.contact:"");
+  function render(){
+    const list=$("list");list.textContent="";
+    $("copy").hidden=!rows.length;
+    $("status").textContent=rows.length?rows.length+(rows.length===1?" message":" messages"):"No feedback yet.";
+    rows.forEach(r=>{
+      const d=document.createElement("div");d.className="msg";
+      const p=document.createElement("p");p.textContent=r.message;d.appendChild(p);
+      if(r.contact){const c=document.createElement("p");c.textContent="Reply to: "+r.contact;d.appendChild(c)}
+      const m=document.createElement("div");m.className="meta";
+      const s=document.createElement("span");s.textContent=r.day+(r.device?" · "+r.device:"");m.appendChild(s);
+      const b=document.createElement("button");b.type="button";b.className="del";b.textContent="Delete";
+      b.onclick=async()=>{b.disabled=true;const x=await api("/"+r.id,{method:"DELETE"}).catch(()=>null);
+        if(x&&x.ok){rows=rows.filter(y=>y!==r);render()}else{b.disabled=false;$("status").textContent="Couldn't delete. Try again."}};
+      m.appendChild(b);d.appendChild(m);list.appendChild(d);
+    });
+  }
+  $("copy").onclick=async()=>{
+    try{await navigator.clipboard.writeText(rows.map(plain).join("\n\n"));$("status").textContent="Copied. Paste it into your note."}
+    catch(e){$("status").textContent="Couldn't copy. Select the text and copy it by hand."}
+  };
+  if(!key){$("status").textContent="This link is missing its key. Use the full inbox link.";return}
+  api("").then(r=>{if(r.status===403)throw new Error("key");if(!r.ok)throw new Error();return r.json()})
+    .then(d=>{rows=d.feedback;render()})
+    .catch(e=>{$("status").textContent=e.message==="key"?"Wrong key. Use the full inbox link.":"Couldn't load. Check your signal and refresh."});
+})();`;
 
 export default {
   async fetch(req, env) {
@@ -198,6 +263,46 @@ export default {
       if (r.meta.changes) await env.DB.prepare("DELETE FROM flags WHERE pothole_id = ?").bind(m[1]).run();
       // Gone already counts as done, so a retry after a dropped connection is fine.
       return json(req, { deleted: r.meta.changes, ...(await stats(env)) });
+    }
+
+    if (url.pathname === "/api/feedback" && req.method === "POST") {
+      const raw = await req.text();
+      if (raw.length > MAX_FEEDBACK) return json(req, { error: "too long" }, 413);
+      let body;
+      try { body = JSON.parse(raw); } catch { return json(req, { error: "bad json" }, 400); }
+      const message = text(body && body.message, 2000);
+      if (!message) return json(req, { error: "message is empty" }, 400);
+      if (await overLimit(req, env)) return json(req, { error: "too many messages, try later" }, 429);
+      const n = await env.DB.prepare("SELECT COUNT(*) AS n FROM feedback").first();
+      if (n.n >= FEEDBACK_ROWS) return json(req, { error: "inbox full, try later" }, 503);
+      await env.DB.prepare("INSERT INTO feedback (day, message, contact, device) VALUES (?, ?, ?, ?)")
+        .bind(today(), message, text(body.contact, 200) || null, text(body.device, 60) || null).run();
+      return json(req, { sent: true }, 201);
+    }
+
+    // Owner only, from the /inbox page.
+    if (url.pathname === "/api/feedback" && req.method === "GET") {
+      if (!(await inboxOk(req, env))) return json(req, { error: "wrong key" }, 403);
+      const { results } = await env.DB.prepare("SELECT id, day, message, contact, device FROM feedback ORDER BY id DESC").all();
+      return json(req, { feedback: results });
+    }
+    const fb = url.pathname.match(/^\/api\/feedback\/(\d{1,10})$/);
+    if (fb && req.method === "DELETE") {
+      if (!(await inboxOk(req, env))) return json(req, { error: "wrong key" }, 403);
+      const r = await env.DB.prepare("DELETE FROM feedback WHERE id = ?").bind(+fb[1]).run();
+      return json(req, { deleted: r.meta.changes });
+    }
+
+    if (url.pathname === "/inbox" || url.pathname === "/inbox.js") {
+      const page = url.pathname === "/inbox";
+      return new Response(page ? INBOX_HTML : INBOX_JS, {
+        headers: {
+          "Content-Type": page ? "text/html; charset=utf-8" : "text/javascript; charset=utf-8",
+          "Content-Security-Policy": "default-src 'none'; script-src 'self'; style-src 'unsafe-inline'; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+          "X-Content-Type-Options": "nosniff", "Referrer-Policy": "no-referrer", "Cache-Control": "no-store",
+          "X-Robots-Tag": "noindex", "Strict-Transport-Security": "max-age=31536000",
+        },
+      });
     }
 
     if (url.pathname === "/") {

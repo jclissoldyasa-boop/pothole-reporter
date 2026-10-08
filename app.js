@@ -272,9 +272,45 @@
     save();$("confirm").hidden=true;
     toast(items.length===1?"Marked as sent":"Marked "+items.length+" as sent");
     pending=null;renderQueue();renderHistory();
+    $("fbNudge").hidden=false;
   };
   $("confirmNo").onclick=()=>{pending=null;$("confirm").hidden=true};
   function msg(t,cls){$("sendMsg").textContent=t;$("sendMsg").className="sendmsg"+(cls?" "+cls:"")}
+
+  // ---------- feedback ----------
+  // Goes to the app owner's private inbox on the map server. Only the message, the optional contact and the phone type.
+  function deviceType(){
+    const u=navigator.userAgent;
+    const os=/iPhone/.test(u)?"iPhone":/iPad/.test(u)?"iPad":/Android/.test(u)?"Android":/Windows/.test(u)?"Windows":/Mac/.test(u)?"Mac":/Linux|CrOS/.test(u)?"Linux":"Other";
+    const br=/SamsungBrowser/.test(u)?"Samsung Internet":/Edg\//.test(u)?"Edge":/Firefox|FxiOS/.test(u)?"Firefox":/Chrome|CriOS/.test(u)?"Chrome":/Safari/.test(u)?"Safari":"other browser";
+    const app=matchMedia("(display-mode: standalone)").matches||navigator.standalone?", installed app":"";
+    return os+", "+br+app;
+  }
+  function fbStatus(t,cls){$("fbMsgStatus").textContent=t;$("fbMsgStatus").className="sendmsg"+(cls?" "+cls:"")}
+  function openFeedback(){
+    const box=$("fbBox");box.hidden=false;fbStatus("");
+    if(!$("fbContact").value&&S.me.email)$("fbContact").value=S.me.email;
+    box.scrollIntoView({behavior:"smooth",block:"start"});
+    setTimeout(()=>$("fbMsg").focus({preventScroll:true}),350);
+  }
+  $("fbLink").onclick=openFeedback;
+  $("fbNudgeBtn").onclick=()=>{$("fbNudge").hidden=true;openFeedback()};
+  $("fbCancel").onclick=()=>{$("fbBox").hidden=true};
+  $("fbSend").onclick=async()=>{
+    const message=$("fbMsg").value.trim();
+    if(!message){fbStatus("Type a message first.","err");$("fbMsg").focus();return}
+    const b=$("fbSend");b.disabled=true;fbStatus("Sending…");
+    try{
+      const r=await fetch(API+"/api/feedback",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({message,contact:$("fbContact").value.trim(),device:deviceType()})});
+      if(r.status===429||r.status===503)throw new Error("busy");
+      if(!r.ok)throw new Error("http "+r.status);
+      $("fbMsg").value="";$("fbBox").hidden=true;
+      toast("Thanks! Feedback sent.");
+    }catch(e){
+      // Leave the message in the box so nothing's lost.
+      fbStatus(e.message==="busy"?"Too many messages right now. Try again later.":"Couldn't send. Check your signal and try again. Your message is still here.","err");
+    }finally{b.disabled=false}
+  };
 
   // ---------- rendering ----------
   function chipRow(q,key,vals,labelFn){
