@@ -719,7 +719,7 @@
       bearing:null,dir:"",time:new Date().toISOString(),
       road:"",suburb:"",postcode:"",near:"",pos:"",size:"",auth:"check",why:"Looking up road…",lookup:"pending"};
     S.queue.push(item);save();renderQueue(item.id);shareOne(item);closePin();
-    toast("Pothole added. Looking up the road…");
+    toast("Added to To send. Looking up the road…");
     lookup(item).then(()=>{save();renderQueue(item.id);renderCouncils()});
   };
 

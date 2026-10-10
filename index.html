@@ -98,22 +98,6 @@
 
   <section class="card">
     <h2>To send <span class="count" id="qCount"></span></h2>
-    <button class="btn pin-open" id="pinOpen" type="button" aria-expanded="false" aria-controls="pinBox">Drop a pin for a pothole you're not at</button>
-    <div class="pin-box" id="pinBox" hidden>
-      <p class="hint">Move the map until the cross is on the pothole. It's sent as an <b>estimated location</b>, so councils know it wasn't logged on the spot.</p>
-      <form class="pin-search" id="pinSearch" role="search">
-        <input id="pinQ" type="search" placeholder="Road or town, e.g. Coburns Rd Melton" aria-label="Search for a road or town" autocomplete="off">
-        <button class="mini" type="submit">Find</button>
-        <button class="mini" type="button" id="pinMe">Near me</button>
-      </form>
-      <ul class="pin-results" id="pinResults" hidden></ul>
-      <div class="pin-map-wrap"><div class="map pin-map" id="pinMap" role="region" aria-label="Map for placing a pothole"></div><div class="pin-cross" aria-hidden="true"></div></div>
-      <p class="hint" id="pinMsg" role="status" aria-live="polite"></p>
-      <div class="row">
-        <button class="btn primary" id="pinAdd" type="button">Add pothole here</button>
-        <button class="btn" id="pinCancel" type="button">Cancel</button>
-      </div>
-    </div>
     <ol class="queue" id="queue"></ol>
     <div class="actions">
       <button class="btn primary" id="sendBtn" type="button">Email VicRoads</button>
@@ -194,6 +178,22 @@
       </div>
       <div class="map" id="map" role="region" aria-label="Map of reported potholes"></div>
       <p class="hint map-legend"><i class="dot new"></i>This week <i class="dot mid"></i>This month <i class="dot old"></i>Older <span id="mapCount"></span></p>
+      <button class="btn pin-open" id="pinOpen" type="button" aria-expanded="false" aria-controls="pinBox">Drop a pin for a pothole you're not at</button>
+      <div class="pin-box" id="pinBox" hidden>
+        <p class="hint">Move the map until the cross is on the pothole. It's sent as an <b>estimated location</b>, so councils know it wasn't logged on the spot.</p>
+        <form class="pin-search" id="pinSearch" role="search">
+          <input id="pinQ" type="search" placeholder="Road or town, e.g. Coburns Rd Melton" aria-label="Search for a road or town" autocomplete="off">
+          <button class="mini" type="submit">Find</button>
+          <button class="mini" type="button" id="pinMe">Near me</button>
+        </form>
+        <ul class="pin-results" id="pinResults" hidden></ul>
+        <div class="pin-map-wrap"><div class="map pin-map" id="pinMap" role="region" aria-label="Map for placing a pothole"></div><div class="pin-cross" aria-hidden="true"></div></div>
+        <p class="hint" id="pinMsg" role="status" aria-live="polite"></p>
+        <div class="row">
+          <button class="btn primary" id="pinAdd" type="button">Add pothole here</button>
+          <button class="btn" id="pinCancel" type="button">Cancel</button>
+        </div>
+      </div>
     </details>
   </section>
 

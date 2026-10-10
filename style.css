@@ -257,3 +257,5 @@ ul.councils li:first-child{border-top:none}
 .pin-cross::before{left:50%;top:-12px;bottom:-12px;width:3px;margin-left:-1.5px}
 .pin-cross::after{top:50%;left:-12px;right:-12px;height:3px;margin-top:-1.5px}
 .tag.est{background:#1d4f91;color:#fff;margin-top:4px}
+.map-legend+.pin-open{margin:12px 0 0}
+.map-legend~.pin-box{margin:12px 0 0}
