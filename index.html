@@ -53,6 +53,7 @@
       <button class="awake" id="warnBtn" type="button" aria-pressed="true"><span class="awake-dot" aria-hidden="true"></span><span id="warnText">Pothole warnings</span></button>
       <button class="awake" id="soundBtn" type="button" title="Change how warnings sound"><span id="soundText">Voice</span></button>
     </div>
+    <button class="sent-nag" id="sentNag" type="button" hidden><span id="sentNagText">Did your email send?</span> <b>Answer</b></button>
     <div class="status" id="status" role="status" aria-live="polite">Phone mounted, one tap, eyes back on the road. Or have your pillion tap.</div>
   </div>
 
@@ -107,7 +108,14 @@
       <p id="confirmText">Did the email send?</p>
       <div class="row">
         <button class="btn primary" id="confirmYes" type="button">Yes, mark as sent</button>
-        <button class="btn" id="confirmNo" type="button">Not yet</button>
+        <button class="btn" id="confirmNo" type="button">No, it didn't send</button>
+      </div>
+    </div>
+    <div class="confirm" id="dupe" hidden>
+      <p id="dupeText"></p>
+      <div class="row">
+        <button class="btn primary" id="dupeNew" type="button"></button>
+        <button class="btn" id="dupeAll" type="button"></button>
       </div>
     </div>
     <div class="confirm" id="clearConfirm" hidden>

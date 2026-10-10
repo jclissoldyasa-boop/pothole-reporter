@@ -231,3 +231,8 @@ ul.councils li:first-child{border-top:none}
 .linkish{font:inherit;background:none;border:none;padding:4px 2px;color:inherit;text-decoration:underline;cursor:pointer}
 .fb-nudge .linkish{color:var(--ink);font-weight:600}
 .fb-link{color:var(--muted);font-size:.83rem}
+.emailed{margin-top:4px;display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.emailed .mini{padding:3px 8px;font-size:.8rem}
+.sent-nag{font:inherit;font-size:.92rem;font-weight:700;margin:10px auto 0;display:block;padding:8px 14px;border-radius:8px;border:2px solid var(--sign);background:var(--field);color:var(--ink);cursor:pointer}
+.sent-nag b{color:var(--flame);margin-left:4px}
+.sent-nag[hidden]{display:none}

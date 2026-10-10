@@ -244,37 +244,74 @@
   const forCouncil=c=>S.queue.filter(q=>q.auth==="council"&&coreName(q.council)===coreName(c));
   // One entry per council, however its name was spelt on each report.
   const councilsInQueue=()=>{const m=new Map();S.queue.filter(q=>q.auth==="council").forEach(q=>{const k=coreName(q.council);if(!m.has(k))m.set(k,q.council||"")});return[...m.values()]};
-  function openEmail(who,council){
+  // Riders often send the email and never come back to tap "mark as sent". So each pothole remembers the email
+  // it went into (q.emailed), the app asks about it next time, and leaves it out of the next email unless asked.
+  const dayName=at=>{const d=new Date(at),t=new Date();return d.toDateString()===t.toDateString()?"today":new Date(t-864e5).toDateString()===d.toDateString()?"yesterday":d.toLocaleDateString("en-AU",{weekday:"short",day:"numeric",month:"short"})};
+  const emailGroups=()=>{const m=new Map();S.queue.forEach(q=>{if(!q.emailed)return;const g=m.get(q.emailed.at)||{at:q.emailed.at,label:q.emailed.to,subject:q.emailed.subject,ids:[]};g.ids.push(q.id);m.set(g.at,g)});return[...m.values()].sort((a,b)=>a.at.localeCompare(b.at))};
+  function emailTargets(who,council){
     const items=who==="council"?forCouncil(council):S.queue.filter(q=>q.auth===who);
-    if(!items.length)return;
-    if(who==="council"&&!council){msg("Open Details on those reports and fill in Council.","err");return}
+    if(!items.length)return null;
+    if(who==="council"&&!council){msg("Open Details on those reports and fill in Council.","err");return null}
     const to=who==="council"?councilEmail(council):vicroadsEmail();
     if(!to){
       focusCouncil(council);
       msg(councilInfo(council)?councilName(council)+" takes reports on its website, not by email. Use their website, or add an email under Council contacts.":"Add an email for "+council+" under Council contacts first.","err");
-      return;
+      return null;
     }
-    const {subject,body}=compose(items);
-    const label=who==="council"?councilName(council):"VicRoads";
-    pending={who,label,ids:items.map(q=>q.id),subject};
-    location.href="mailto:"+to+"?subject="+encodeURIComponent(subject)+"&body="+encodeURIComponent(body);
-    $("confirmText").textContent="Did the email to "+label+" send?";
-    $("confirm").hidden=false;msg("");
+    return{items,to,label:who==="council"?councilName(council):"VicRoads"};
+  }
+  function openEmail(who,council){
+    const t=emailTargets(who,council);if(!t)return;
+    const fresh=t.items.filter(q=>!q.emailed),old=t.items.filter(q=>q.emailed);
+    if(!old.length)return sendEmail(t,t.items);
+    const days=[...new Set(old.map(q=>dayName(q.emailed.at)))].join(" and ");
+    $("confirm").hidden=true;
+    $("dupeText").textContent=fresh.length
+      ?fresh.length+(fresh.length===1?" new pothole. ":" new potholes. ")+old.length+(old.length===1?" other was":" others were")+" already emailed "+days+". Include "+(old.length===1?"it":"them")+" anyway?"
+      :(old.length===1?"This pothole was":"All "+old.length+" were")+" already emailed "+days+". Did that email send?";
+    $("dupeNew").textContent=fresh.length?"Just the "+fresh.length+" new":"Yes, mark as sent";
+    $("dupeAll").textContent=fresh.length?"Include all "+t.items.length:"No, email "+(old.length===1?"it":"them")+" again";
+    $("dupeNew").onclick=()=>{$("dupe").hidden=true;if(fresh.length)sendEmail(t,fresh);else markSent(old.map(q=>q.id),old[0].emailed.to,old[0].emailed.subject)};
+    $("dupeAll").onclick=()=>{$("dupe").hidden=true;sendEmail(t,t.items)};
+    $("dupe").hidden=false;msg("");
+  }
+  function sendEmail(t,items){
+    const {subject,body}=compose(items),at=new Date().toISOString();
+    items.forEach(q=>{q.emailed={at,to:t.label,subject}});save();
+    location.href="mailto:"+t.to+"?subject="+encodeURIComponent(subject)+"&body="+encodeURIComponent(body);
+    renderQueue();askSent({at,label:t.label,subject,ids:items.map(q=>q.id)},true);msg("");
+  }
+  // Shows "did it send?" for one email: the one just opened, or else the oldest one not yet answered.
+  function askSent(g,now){
+    if(!g){if(pending&&S.queue.some(q=>q.emailed&&q.emailed.at===pending.at))return;g=emailGroups()[0]}
+    pending=g||null;$("sentNag").hidden=!g;
+    if(!g){$("confirm").hidden=true;return}
+    $("confirmText").textContent=now?"Did the email to "+g.label+" send?":"You opened an email to "+g.label+" "+dayName(g.at)+" with "+g.ids.length+(g.ids.length===1?" pothole":" potholes")+". Did it send?";
+    $("sentNagText").textContent="Did your email to "+g.label+" send?";
+    $("confirm").hidden=false;
+  }
+  function markSent(ids,label,subject){
+    const items=S.queue.filter(q=>ids.includes(q.id));
+    if(!items.length){pending=null;askSent();return}
+    items.forEach(q=>{delete q.emailed;shareOne(q)});
+    S.queue=S.queue.filter(q=>!ids.includes(q.id));
+    S.history.unshift({at:new Date().toISOString(),count:items.length,to:label,subject,items});
+    S.history=S.history.slice(0,50);
+    save();
+    toast(items.length===1?"Marked as sent":"Marked "+items.length+" as sent");
+    pending=null;renderQueue();renderHistory();askSent();
+    $("fbNudge").hidden=false;
   }
   $("sendBtn").onclick=()=>openEmail("vicroads");
-  $("confirmYes").onclick=()=>{
+  $("confirmYes").onclick=()=>{if(pending)markSent(pending.ids,pending.label,pending.subject)};
+  // Didn't send: they go back to being ordinary reports, included in the next email.
+  $("confirmNo").onclick=()=>{
     if(!pending)return;
-    const items=S.queue.filter(q=>pending.ids.includes(q.id));
-    items.forEach(shareOne);
-    S.queue=S.queue.filter(q=>!pending.ids.includes(q.id));
-    S.history.unshift({at:new Date().toISOString(),count:items.length,to:pending.label,subject:pending.subject,items});
-    S.history=S.history.slice(0,50);
-    save();$("confirm").hidden=true;
-    toast(items.length===1?"Marked as sent":"Marked "+items.length+" as sent");
-    pending=null;renderQueue();renderHistory();
-    $("fbNudge").hidden=false;
+    S.queue.forEach(q=>{if(q.emailed&&q.emailed.at===pending.at)delete q.emailed});
+    save();pending=null;renderQueue();askSent();
   };
-  $("confirmNo").onclick=()=>{pending=null;$("confirm").hidden=true};
+  $("sentNag").onclick=()=>{$("confirm").scrollIntoView({block:"center",behavior:"smooth"})};
+  document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible")askSent()});
   function msg(t,cls){$("sendMsg").textContent=t;$("sendMsg").className="sendmsg"+(cls?" "+cls:"")}
 
   // ---------- feedback ----------
@@ -322,6 +359,15 @@
       const a=document.createElement("a");a.href=maps(q);a.target="_blank";a.rel="noopener";a.textContent="map";sub.append(a);
       const why=document.createElement("div");why.className="why"+(q.auth==="check"?" warn":"");why.textContent=q.why||"";
       meta.append(st,badge,sub,why);
+      if(q.emailed){
+        const em=document.createElement("div");em.className="emailed";
+        const tg=document.createElement("span");tg.className="tag";tg.textContent="Emailed "+dayName(q.emailed.at)+", not confirmed";
+        const ms=document.createElement("button");ms.type="button";ms.className="mini ok";ms.textContent="Mark sent";
+        ms.setAttribute("aria-label","Mark the email to "+q.emailed.to+" as sent");
+        // The whole email went together, so everything in it is marked sent.
+        ms.onclick=()=>{const at=q.emailed.at;markSent(S.queue.filter(x=>x.emailed&&x.emailed.at===at).map(x=>x.id),q.emailed.to,q.emailed.subject)};
+        em.append(tg," ",ms);meta.append(em);
+      }
       const ed=document.createElement("button");ed.className="mini";ed.type="button";ed.textContent="Details";
       const fx=document.createElement("button");fx.className="mini ok";fx.type="button";fx.textContent="Fixed";
       fx.setAttribute("aria-label","Pothole "+(i+1)+" has been fixed");fx.title="Takes it off the map but keeps it in the counts";
@@ -358,15 +404,17 @@
     });
     updateButtons();
   }
+  // "Email 3", or "Email 3 new" when others on the list were already emailed, or "Email 4 again".
+  const emailLabel=its=>{const f=its.filter(q=>!q.emailed).length;return f===its.length?"Email "+f:f?"Email "+f+" new":"Email "+its.length+" again"};
   function updateButtons(){
     const vr=S.queue.filter(q=>q.auth==="vicroads"),co=S.queue.filter(q=>q.auth==="council"),ck=S.queue.filter(q=>q.auth==="check");
     $("qCount").textContent=S.queue.length?S.queue.length+" logged"+(ck.length?", "+ck.length+" to check":""):"";
     $("sendBtn").disabled=!vr.length;
-    $("sendBtn").textContent=vr.length?"Email "+vr.length+" to VicRoads":"Nothing for VicRoads yet";
+    $("sendBtn").textContent=vr.length?emailLabel(vr)+" to VicRoads":"Nothing for VicRoads yet";
     const box=$("councilBtns");box.innerHTML="";
     councilsInQueue().forEach(c=>{
-      const n=forCouncil(c).length,b=document.createElement("button");b.type="button";b.className="btn";
-      b.textContent=!c?n+" council "+(n===1?"report needs":"reports need")+" a council name":"Email "+n+" to "+councilName(c)+(councilEmail(c)?"":councilInfo(c)?" (website only)":" (add email first)");
+      const its=forCouncil(c),n=its.length,b=document.createElement("button");b.type="button";b.className="btn";
+      b.textContent=!c?n+" council "+(n===1?"report needs":"reports need")+" a council name":emailLabel(its)+" to "+councilName(c)+(councilEmail(c)?"":councilInfo(c)?" (website only)":" (add email first)");
       b.onclick=()=>openEmail("council",c);box.appendChild(b);
     });
     syncCouncils();
@@ -869,7 +917,7 @@
     showQR(true);$("qrBox").scrollIntoView({block:"nearest",behavior:"smooth"});
   };
 
-  renderQueue();renderCouncils();renderHistory();renderStats();save();
+  renderQueue();renderCouncils();renderHistory();renderStats();save();askSent();
   fetchStats();shareMissing();flushUnshare();
   if(S.queue.some(q=>q.lookup==="failed"||q.lookup==="offline"||needsArea(q)))lookupMissing();
 
