@@ -259,3 +259,4 @@ ul.councils li:first-child{border-top:none}
 .tag.est{background:#1d4f91;color:#fff;margin-top:4px}
 .map-legend+.pin-open{margin:12px 0 0}
 .map-legend~.pin-box{margin:12px 0 0}
+.flash.hit.hold{animation:none;opacity:1;box-shadow:inset 0 0 0 16px var(--fc),inset 0 0 40px 22px var(--fc)}

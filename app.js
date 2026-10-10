@@ -187,10 +187,14 @@
   function flash(kind){
     const el=$("flash");el.className="flash";void el.offsetWidth;el.className="flash "+kind;
   }
+  // Opened from the home-screen shortcut, a quick flash would be over behind the splash screen.
+  // So the green border stays on until the pothole is logged (at least 1.2 s), then fades; red if GPS fails.
+  let holdUntil=0;
+  const endHold=kind=>{if(!holdUntil)return;const w=holdUntil-Date.now();holdUntil=0;setTimeout(()=>flash(kind),kind==="hit"?Math.max(0,w):0)};
   $("markBtn").addEventListener("click",()=>{
-    flash("hit");
+    flash(holdUntil?"hit hold":"hit");
     if(busy)return;
-    if(!("geolocation" in navigator)){setStatus("This browser can't share location.","err");return}
+    if(!("geolocation" in navigator)){endHold("miss");setStatus("This browser can't share location.","err");return}
     const tappedAt=Date.now();
     if(live&&tappedAt-live.t<4000){logFix(live,tappedAt);return}
     busy=true;const btn=$("markBtn");btn.setAttribute("aria-busy","true");
@@ -200,7 +204,7 @@
       const f={lat:p.coords.latitude,lng:p.coords.longitude,acc:p.coords.accuracy,heading:p.coords.heading,speed:p.coords.speed||0,t:Date.now()};
       logFix(f,tappedAt);startWarm();
     },e=>{
-      busy=false;btn.removeAttribute("aria-busy");flash("miss");
+      busy=false;btn.removeAttribute("aria-busy");if(holdUntil)endHold("miss");else flash("miss");
       setStatus(e.code===1?"Location is blocked. Allow location for this site in your browser settings, then tap again.":"Couldn't get a GPS fix. Try again in the open.","err");
     },{enableHighAccuracy:true,maximumAge:3000,timeout:15000});
   });
@@ -218,7 +222,7 @@
     const item={id:Date.now().toString(36)+Math.random().toString(36).slice(2,5),lat:f.lat.toFixed(6),lng:f.lng.toFixed(6),acc:Math.round(f.acc),
       bearing:b==null?null:Math.round(b),dir:b==null?"":toCode(b),time:new Date(tappedAt).toISOString(),
       road:"",suburb:"",postcode:"",near:"",pos:"",size:"",auth:"check",why:"Looking up road…",lookup:"pending"};
-    S.queue.push(item);save();renderQueue();shareOne(item);
+    S.queue.push(item);save();renderQueue();shareOne(item);endHold("hit");
     if(navigator.vibrate)try{navigator.vibrate([60,40,60])}catch(e){}
     setStatus("Logged. Looking up the road…");
     lookup(item).then(()=>{
@@ -1002,7 +1006,9 @@
   // The ?report is wiped first, so a reload or going back doesn't log a second one.
   if(new URLSearchParams(location.search).has("report")){
     history.replaceState(null,"",location.pathname+location.hash);
-    $("markBtn").click();
+    // Wait for the first frame on screen, so the green border isn't drawn under the splash screen.
+    holdUntil=Date.now()+1e9;
+    requestAnimationFrame(()=>requestAnimationFrame(()=>{holdUntil=Date.now()+1200;$("markBtn").click()}));
   }
   // Already running as the installed app: point straight at the press-and-hold step.
   if(matchMedia("(display-mode: standalone)").matches)$("guideDone").hidden=false;
