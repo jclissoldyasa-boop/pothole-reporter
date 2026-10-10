@@ -237,9 +237,10 @@
     if(q.dir)L.push("   Travel direction: "+dirName(q.dir)+(q.bearing!=null?" (bearing "+q.bearing+"°)":""));
     if(q.pos)L.push("   Position: "+q.pos);
     if(q.size)L.push("   Size: "+q.size);
-    L.push("   GPS: "+q.lat+", "+q.lng+(q.acc!=null?" (within about "+q.acc+" m)":""));
+    if(q.est)L.push("   GPS: "+q.lat+", "+q.lng+" (estimated: placed on a map afterwards, not logged on the spot, so please check nearby)");
+    else L.push("   GPS: "+q.lat+", "+q.lng+(q.acc!=null?" (within about "+q.acc+" m)":""));
     L.push("   Map: "+maps(q));
-    L.push("   Seen: "+t.toLocaleString("en-AU",{dateStyle:"medium",timeStyle:"short"}));
+    L.push("   "+(q.est?"Reported":"Seen")+": "+t.toLocaleString("en-AU",{dateStyle:"medium",timeStyle:"short"}));
     return L.join("\n");
   }
   function compose(items){
@@ -368,10 +369,11 @@
       const badge=document.createElement("span");badge.className="auth "+q.auth;badge.textContent=authLabel(q);
       const sub=document.createElement("div");sub.className="sub";
       const t=new Date(q.time);
-      sub.append(t.toLocaleString("en-AU",{weekday:"short",hour:"numeric",minute:"2-digit"})+(q.dir?", "+dirName(q.dir).toLowerCase():"")+(q.acc!=null?", ±"+q.acc+" m":"")+" · ");
+      sub.append(t.toLocaleString("en-AU",{weekday:"short",hour:"numeric",minute:"2-digit"})+(q.dir?", "+dirName(q.dir).toLowerCase():"")+(q.est?", estimated":q.acc!=null?", ±"+q.acc+" m":"")+" · ");
       const a=document.createElement("a");a.href=maps(q);a.target="_blank";a.rel="noopener";a.textContent="map";sub.append(a);
       const why=document.createElement("div");why.className="why"+(q.auth==="check"?" warn":"");why.textContent=q.why||"";
       meta.append(st,badge,sub,why);
+      if(q.est){const tg=document.createElement("span");tg.className="tag est";tg.textContent="Estimated location";meta.append(tg)}
       if(q.emailed){
         const em=document.createElement("div");em.className="emailed";
         const tg=document.createElement("span");tg.className="tag";tg.textContent="Emailed "+dayName(q.emailed.at)+", not confirmed";
@@ -660,6 +662,67 @@
     leafletP.catch(()=>{leafletP=null});
     return leafletP;
   }
+  // ---------- drop a pin ----------
+  // For a pothole the rider remembers but isn't at: pan the map under a fixed cross, then add it.
+  // It's flagged est, so the email says the spot was placed on a map, and there's no direction or accuracy.
+  let pinMap=null;const PIN_ZOOM=16;
+  function pinState(){
+    const z=pinMap?pinMap.getZoom():0,ok=z>=PIN_ZOOM;
+    $("pinAdd").disabled=!ok;$("pinAdd").textContent=ok?"Add pothole here":"Zoom in closer to add";
+  }
+  async function openPin(){
+    $("pinBox").hidden=false;$("pinOpen").setAttribute("aria-expanded","true");$("pinMsg").textContent="Loading map…";
+    try{await loadLeaflet()}catch(e){$("pinMsg").textContent="The map needs signal.";return}
+    $("pinMsg").textContent="";
+    if(!pinMap){
+      const last=S.queue[S.queue.length-1];
+      const start=live?[live.lat,live.lng,16]:last?[+last.lat,+last.lng,15]:[-37.68,144.55,11];
+      pinMap=L.map("pinMap").setView([start[0],start[1]],start[2]);
+      L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:19,attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'}).addTo(pinMap);
+      pinMap.on("zoomend",pinState);
+    }
+    setTimeout(()=>pinMap.invalidateSize(),60);pinState();
+    $("pinBox").scrollIntoView({block:"start",behavior:"smooth"});
+  }
+  function closePin(){$("pinBox").hidden=true;$("pinOpen").setAttribute("aria-expanded","false");$("pinResults").hidden=true}
+  $("pinOpen").onclick=()=>$("pinBox").hidden?openPin():closePin();
+  $("pinCancel").onclick=closePin;
+  $("pinMe").onclick=()=>{
+    if(!pinMap)return;
+    if(live&&Date.now()-live.t<60000){pinMap.setView([live.lat,live.lng],17);return}
+    $("pinMsg").textContent="Finding you…";
+    navigator.geolocation.getCurrentPosition(p=>{$("pinMsg").textContent="";pinMap.setView([p.coords.latitude,p.coords.longitude],17)},
+      ()=>{$("pinMsg").textContent="Couldn't get your location. Search for the road instead."},{enableHighAccuracy:true,maximumAge:30000,timeout:15000});
+  };
+  $("pinSearch").onsubmit=async e=>{
+    e.preventDefault();const q=$("pinQ").value.trim(),ul=$("pinResults");if(!q||!pinMap)return;
+    $("pinMsg").textContent="Searching…";ul.hidden=true;ul.innerHTML="";
+    const gap=1100-(Date.now()-lastLookup);if(gap>0)await wait(gap);lastLookup=Date.now();
+    try{
+      // Victoria first (viewbox), but not limited to it.
+      const r=await fetch("https://nominatim.openstreetmap.org/search?format=jsonv2&limit=5&countrycodes=au&viewbox=140.9,-33.9,150.1,-39.2&q="+encodeURIComponent(q),{headers:{"Accept-Language":"en-AU"}});
+      if(!r.ok)throw new Error("http "+r.status);
+      const d=(await r.json()).filter(x=>Number.isFinite(+x.lat)&&Number.isFinite(+x.lon));
+      $("pinMsg").textContent=d.length?"":"Nothing found. Try a road and town, e.g. Coburns Rd Melton.";
+      d.forEach(x=>{
+        const li=document.createElement("li"),b=document.createElement("button");b.type="button";b.textContent=x.display_name;
+        b.onclick=()=>{pinMap.setView([+x.lat,+x.lon],x.type==="city"||x.type==="town"||x.type==="administrative"?14:17);ul.hidden=true};
+        li.append(b);ul.append(li);
+      });
+      ul.hidden=!d.length;
+    }catch(err){$("pinMsg").textContent="Search needs signal."}
+  };
+  $("pinAdd").onclick=()=>{
+    if(!pinMap||pinMap.getZoom()<PIN_ZOOM)return;
+    const c=pinMap.getCenter();
+    const item={id:Date.now().toString(36)+Math.random().toString(36).slice(2,5),lat:c.lat.toFixed(6),lng:c.lng.toFixed(6),acc:null,est:true,
+      bearing:null,dir:"",time:new Date().toISOString(),
+      road:"",suburb:"",postcode:"",near:"",pos:"",size:"",auth:"check",why:"Looking up road…",lookup:"pending"};
+    S.queue.push(item);save();renderQueue(item.id);shareOne(item);closePin();
+    toast("Pothole added. Looking up the road…");
+    lookup(item).then(()=>{save();renderQueue(item.id);renderCouncils()});
+  };
+
   const agoText=n=>n===0?"Logged today":n===1?"Logged yesterday":"Logged "+n+" days ago";
 
   // ---------- riders' map: is it still there? ----------
