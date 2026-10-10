@@ -183,7 +183,12 @@
 
   // ---------- the one tap ----------
   let busy=false;
+  // A glance is all a rider gets: the whole screen edge flashes green for a hit, red for a near miss.
+  function flash(kind){
+    const el=$("flash");el.className="flash";void el.offsetWidth;el.className="flash "+kind;
+  }
   $("markBtn").addEventListener("click",()=>{
+    flash("hit");
     if(busy)return;
     if(!("geolocation" in navigator)){setStatus("This browser can't share location.","err");return}
     const tappedAt=Date.now();
@@ -195,9 +200,17 @@
       const f={lat:p.coords.latitude,lng:p.coords.longitude,acc:p.coords.accuracy,heading:p.coords.heading,speed:p.coords.speed||0,t:Date.now()};
       logFix(f,tappedAt);startWarm();
     },e=>{
-      busy=false;btn.removeAttribute("aria-busy");
+      busy=false;btn.removeAttribute("aria-busy");flash("miss");
       setStatus(e.code===1?"Location is blocked. Allow location for this site in your browser settings, then tap again.":"Couldn't get a GPS fix. Try again in the open.","err");
     },{enableHighAccuracy:true,maximumAge:3000,timeout:15000});
+  });
+
+  // Taps on the empty space around the sign (or the text under it) are misses.
+  document.querySelector(".mark-zone").addEventListener("click",e=>{
+    if(e.target.closest("button"))return;
+    flash("miss");
+    if(navigator.vibrate)try{navigator.vibrate(300)}catch(e){}
+    setStatus("Missed. Tap the yellow sign.","err");
   });
 
   function logFix(f,tappedAt){
