@@ -62,7 +62,8 @@
 
   // Every Victorian council (councils.js). OpenStreetMap says "Shire of Moorabool", the council says
   // "Moorabool Shire Council", so both are matched on the core name ("moorabool").
-  function coreName(n){return(n||"").toLowerCase().replace(/[-']/g," ").replace(/\b(city|shire|rural|borough|council|of|the)\b/g," ").replace(/\s+/g," ").trim()}
+  // NSW adds "Armidale Regional Council", "Mosman Municipal Council" and "Sydney, Council of the City of".
+  function coreName(n){return(n||"").toLowerCase().replace(/[-',.]/g," ").replace(/\b(city|shire|rural|borough|regional|municipal|municipality|council|of|the)\b/g," ").replace(/\s+/g," ").trim()}
   // ---------- states, road authorities and councils ----------
   // Main roads in each state go to its road authority. An empty email means it only takes reports by phone or on its website.
   // Sources: each authority's own "report a road hazard" page, October 2026.
@@ -83,8 +84,8 @@
     return Object.keys(STATE_NAMES).find(k=>STATE_NAMES[k].toLowerCase()===s)||"";
   }
   // Every council we have contacts for, keyed "state:core name" (e.g. "vic:melton"), because names repeat
-  // across states (Campbelltown is in NSW and SA). Victoria's come from councils.js; more states to come.
-  const COUNCIL_LISTS={vic:window.VIC_COUNCILS||[]};
+  // across states (Campbelltown is in NSW and SA). From councils.js; more states to come.
+  const COUNCIL_LISTS={vic:window.VIC_COUNCILS||[],nsw:window.NSW_COUNCILS||[]};
   const CINFO={};Object.entries(COUNCIL_LISTS).forEach(([st,l])=>l.forEach(([name,phone,email,web])=>{CINFO[st+":"+coreName(name)]={name,phone,email,web}}));
   const keyState=k=>k.startsWith("road:")?k.slice(5):k.slice(0,k.indexOf(":"));
   const keyCore=k=>k.slice(k.indexOf(":")+1);
@@ -94,7 +95,7 @@
   const ckeyOf=q=>q.council?(stateOf(q)||"?")+":"+coreName(q.council):"";
   const councilInfo=k=>CINFO[k]||null;
   const councilName=(k,raw)=>CINFO[k]?CINFO[k].name:(raw||titleCase(keyCore(k)));
-  const shortCouncil=(k,raw)=>councilName(k,raw).replace(/ (Rural City|City|Shire|Borough|Regional|Municipal) Council$/,"");
+  const shortCouncil=(k,raw)=>councilName(k,raw).replace(/^City of /,"").replace(/( (Rural City|City|Shire|Borough|Regional|Municipal))? Council$/,"");
   // Your own email for a council (or a road authority, key "road:vic") wins over the built-in one.
   const councilEmail=k=>(S.councils[k]||(CINFO[k]||{}).email||"").trim();
   const roadEmail=st=>(S.councils["road:"+st]||(ROADS[st]||{}).email||"").trim();
@@ -168,8 +169,11 @@
         if(!r.ok)throw new Error("http "+r.status);
         const els=(await r.json()).elements||[];
         const rels=els.filter(e=>e.type==="relation"&&e.tags);
-        const area=rels.find(e=>e.tags.admin_level==="6"&&e.tags.name),state=rels.find(e=>e.tags.admin_level==="4");
-        return{council:area?area.tags.name:"",st:state?stateCode(state.tags["ISO3166-2"])||stateCode(state.tags.name):"",ways:els.filter(e=>e.type==="way"&&e.tags).map(e=>e.tags)};
+        const state=rels.find(e=>e.tags.admin_level==="4"),st=state?stateCode(state.tags["ISO3166-2"])||stateCode(state.tags.name):"";
+        // Sydney Harbour's wharves and islands are mapped like councils, so a council on our list wins when a spot is in both.
+        const areas=rels.filter(e=>e.tags.admin_level==="6"&&e.tags.name);
+        const area=areas.find(e=>CINFO[st+":"+coreName(e.tags.name)])||areas[0];
+        return{council:area?area.tags.name:"",st,ways:els.filter(e=>e.type==="way"&&e.tags).map(e=>e.tags)};
       }catch(e){}finally{clearTimeout(t)}
     }
     return null;
@@ -545,15 +549,22 @@
       b.textContent=!k?n+" council "+(n===1?"report needs":"reports need")+" a council name":emailLabel(its)+" to "+councilName(k,raw)+(councilEmail(k)?"":councilInfo(k)&&councilInfo(k).web?" (website only)":" (add email first)");
       b.onclick=()=>openEmail("council",k);box.appendChild(b);
     });
-    syncCouncils();
+    syncCouncils();setUrgent();
     $("clearBtn").hidden=$("swipeHint").hidden=!S.queue.length;if(!S.queue.length)$("clearConfirm").hidden=true;
     $("lookupBtn").hidden=!S.queue.some(q=>q.lookup==="failed"||q.lookup==="offline"||(q.lookup==="done"&&needsArea(q)));
+  }
+  // The footer's "urgent danger" number is the road authority for wherever you last logged a pothole (VicRoads to start).
+  function setUrgent(){
+    const st=[...S.queue].reverse().concat(...S.history.map(h=>h.items||[])).map(stateOf).find(x=>ROADS[x])||"vic";
+    $("urgent").textContent=ROADS[st].short+" on "+ROADS[st].phone;
   }
   // ---------- council contacts ----------
   // Pick a state, then see its road authority and councils. Keys are "road:vic" and "vic:melton".
   let editing=null,openState=null;
   const STATE_ORDER=["vic","nsw","qld","sa","wa","tas","act","nt"];
-  const SOURCES={vic:"Council details from the Vic Councils (Municipal Association of Victoria) contacts list."};
+  const SOURCES={vic:"Council details from the Vic Councils (Municipal Association of Victoria) contacts list.",
+    nsw:"Council details from the NSW Office of Local Government council directory."};
+  const SEARCH_EG={vic:"Geelong",nsw:"Blacktown"};
   // Councils in a state: the ones we have contacts for, plus any met on the road or given an email. Key → name.
   function councilsIn(st){
     const all=new Map(Object.entries(CINFO).filter(([k])=>keyState(k)===st).map(([k,i])=>[k,i.name]));
@@ -585,7 +596,7 @@
     $("stateTitle").textContent=STATE_NAMES[st];
     const hasList=Object.keys(CINFO).some(k=>keyState(k)===st);
     $("councilSource").textContent=SOURCES[st]||(st==="act"?"The ACT has no councils. The ACT Government looks after every road.":"The full council list for "+STATE_NAMES[st]+" is coming soon. Councils from your reports show here, and you can add their email.");
-    $("councilSearch").hidden=!hasList;
+    $("councilSearch").hidden=!hasList;$("councilSearch").placeholder="Search councils, e.g. "+(SEARCH_EG[st]||"");
     const list=$("councilList");list.innerHTML="";
     const term=$("councilSearch").value.trim().toLowerCase();
     const inQ=new Set(S.queue.filter(q=>q.auth==="council").map(ckeyOf));
@@ -839,8 +850,9 @@
     try{await loadLeaflet()}catch(e){$("pinMsg").textContent="The map needs signal.";return}
     $("pinMsg").textContent="";
     if(!pinMap){
-      const last=S.queue[S.queue.length-1];
-      const start=live?[live.lat,live.lng,16]:last?[+last.lat,+last.lng,15]:[-37.68,144.55,11];
+      // Starts where you are, or at your latest report, or else shows all of Australia.
+      const last=S.queue[S.queue.length-1]||((S.history[0]||{}).items||[])[0];
+      const start=live?[live.lat,live.lng,16]:last&&+last.lat?[+last.lat,+last.lng,15]:[-28,134,4];
       pinMap=L.map("pinMap").setView([start[0],start[1]],start[2]);
       L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:19,attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'}).addTo(pinMap);
       pinMap.on("zoomend",pinState);
@@ -863,8 +875,10 @@
     $("pinMsg").textContent="Searching…";ul.hidden=true;ul.innerHTML="";
     const gap=1100-(Date.now()-lastLookup);if(gap>0)await wait(gap);lastLookup=Date.now();
     try{
-      // Victoria first (viewbox), but not limited to it.
-      const r=await fetch("https://nominatim.openstreetmap.org/search?format=jsonv2&limit=5&countrycodes=au&viewbox=140.9,-33.9,150.1,-39.2&q="+encodeURIComponent(q),{headers:{"Accept-Language":"en-AU"}});
+      // Places near what the map shows come first (viewbox), but the search covers all of Australia.
+      const b=pinMap.getBounds().pad(pinMap.getZoom()>=12?2:0);
+      const vb=[b.getWest(),b.getNorth(),b.getEast(),b.getSouth()].map(x=>x.toFixed(3)).join(",");
+      const r=await fetch("https://nominatim.openstreetmap.org/search?format=jsonv2&limit=5&countrycodes=au&viewbox="+vb+"&q="+encodeURIComponent(q),{headers:{"Accept-Language":"en-AU"}});
       if(!r.ok)throw new Error("http "+r.status);
       const d=(await r.json()).filter(x=>Number.isFinite(+x.lat)&&Number.isFinite(+x.lon));
       $("pinMsg").textContent=d.length?"":"Nothing found. Try a road and town, e.g. Coburns Rd Melton.";
@@ -1119,7 +1133,7 @@
   const SITE=NEW_SITE+"about";
   function shareText(){
     const t=S.stats&&S.stats.total;
-    return "Sick of dodging potholes? Help keep riders upright. Log them in one tap and they're sent to whoever's meant to fix them, VicRoads or the council. Plus a live map of every hole riders have found"+(t?", "+t.toLocaleString("en-AU")+" and counting.":".");
+    return "Sick of dodging potholes? Help keep riders upright. Log them in one tap and they're sent to whoever's meant to fix them, the state road authority or the council. Plus a live map of every hole riders have found"+(t?", "+t.toLocaleString("en-AU")+" and counting.":".");
   }
   function showQR(open){
     $("qrBox").hidden=!open;$("qrBtn").setAttribute("aria-expanded",open);$("qrBtn").textContent=open?"Hide":"More ways";

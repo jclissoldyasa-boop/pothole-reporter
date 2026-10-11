@@ -33,7 +33,7 @@ The app is served from Cloudflare (static assets, `wrangler.jsonc` + `site-worke
 
 - Councils and saved emails are keyed `state:core name` (`vic:melton`), road authorities `road:vic`, because council and suburb names repeat across states.
 
-- `councils.js` lists all 79 Victorian councils with the phone, customer-service email (which takes road hazard reports) and website, from the Vic Councils (MAV) council contacts list. Melbourne and Port Phillip take reports only through their websites.
+- `councils.js` lists all 128 NSW councils (NSW Office of Local Government directory: phone, general email, website; Newcastle has no email so goes via its website) and all 79 Victorian councils with the phone, customer-service email (which takes road hazard reports) and website, from the Vic Councils (MAV) council contacts list. Melbourne and Port Phillip take reports only through their websites.
 - "Council contacts" opens a list of states and territories. Each shows its road authority (`ROADS` in `app.js`) and councils: Victoria's full list, elsewhere just the councils from your reports until each state's list is added. Anyone can change the email for any council or road authority. Changes are saved on that phone only, with "Use standard" to go back.
 - Council names from OpenStreetMap ("Shire of Moorabool") are matched to the list ("Moorabool Shire Council") on the core name.
 

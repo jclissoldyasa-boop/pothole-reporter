@@ -78,6 +78,8 @@ ok(vr.league.some(w => w[0] === "vic:melton") && vr.worst.some(w => w[0] === "me
 ok((await nc({ council: "vic:melton", state: "vic", road: false })).status === 200, "state-keyed Victorian council accepted");
 ok((await nc({ council: "melton", state: "vic", road: false })).status === 400, "new format needs the state in the council key");
 ok((await nc({ council: "nsw:made up", state: "nsw", road: false })).status === 400, "councils not on a list refused (no made-up names in the league)");
+ok((await nc({ council: "nsw:blacktown", state: "nsw", road: false })).status === 200, "NSW council on the list accepted");
+ok((await nc({ council: "sa:campbelltown", state: "sa", road: false })).status === 400, "same name in a state without a list refused");
 ok((await nc({ council: "vic:melton", state: "nsw", road: false })).status === 400, "council and state must match");
 ok((await nc({ council: "", state: "narnia", road: true })).status === 400, "unknown state refused");
 ok((await nc({ council: "", state: "nsw", road: "yes" })).status === 400, "road flag must be true or false");

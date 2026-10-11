@@ -70,3 +70,5 @@ body.about{font-size:17px}
 .sp-app{display:grid;place-items:center;background:var(--bg)}
 .sp-app img{width:56px;height:auto}
 @media (min-width:760px){.feat.split{grid-template-columns:auto 1fr;gap:24px}}
+.vr-line+.vr-line{border-top:none;padding-top:0;margin-top:2px}
+.vr-note{display:block;color:#a3a8ad;font-size:.8rem;margin-top:4px}
