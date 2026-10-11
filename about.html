@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en-AU">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src https://api.motopotholereporter.au http://localhost:8787; base-uri 'none'; form-action 'none'; object-src 'none'">
+<meta name="referrer" content="strict-origin-when-cross-origin">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Motorcycle Pothole Reporter</title>
+<meta name="description" content="Sick of dodging potholes? Log them in one tap and they&#39;re sent to whoever&#39;s meant to fix them, VicRoads or the council. Free, no sign-up, made for riders in Victoria.">
+<!-- Link previews (WhatsApp, Facebook, Messenger, texts) -->
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Motorcycle Pothole Reporter">
+<meta property="og:title" content="Motorcycle Pothole Reporter: help keep riders upright">
+<meta property="og:description" content="Sick of dodging potholes? Log them in one tap and they&#39;re sent to whoever&#39;s meant to fix them, VicRoads or the council. Plus a live map of every hole riders have found.">
+<meta property="og:url" content="https://motopotholereporter.au/about">
+<meta property="og:image" content="https://motopotholereporter.au/og-card.jpg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Motorcycle Pothole Reporter: Spot it. Tap it. Get it fixed.">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://motopotholereporter.au/og-card.jpg">
+<meta name="theme-color" content="#141516">
+<link rel="icon" href="icon-192.png" type="image/png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Overpass:wght@400;600;800;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="about.css">
+</head>
+<body class="about">
+
+<header class="hero">
+  <div class="hero-in">
+    <div class="hero-text">
+      <p class="kicker">Ride safe. Report it.</p>
+      <h1>Motorcycle <span>Pothole Reporter</span></h1>
+      <p class="tagline">Spot it. Tap it. Get it fixed.</p>
+      <p class="lede">One tap on your phone logs the pothole you just rode over. The app works out who's meant to fix it, VicRoads or the council, and writes the email for you. Every pothole also goes on a live map so other riders know it's there.</p>
+      <div class="cta">
+        <a class="btn primary" href="./">Open the app</a>
+        <a class="btn ghost" href="#install">Put it on your phone</a>
+      </div>
+      <p class="free">Free. No sign-up. No ads. Made for riders in Victoria.</p>
+    </div>
+    <img class="hero-sign" src="sign.webp" width="640" height="636" alt="Yellow road sign with a motorbike and the words Pothole! Tap to log it">
+  </div>
+  <div class="tally hero-tally" aria-live="polite">
+    <div class="counter"><b id="aTotal">–</b><span>potholes reported by riders<small id="aWeek"></small></span></div>
+    <div class="counter fixed"><b id="aFixed">–</b><span>potholes &ldquo;fixed&rdquo;<small>Gone, or patched. Sort of.</small></span></div>
+  </div>
+</header>
+
+<main class="wrap about-wrap">
+
+  <section class="how" aria-labelledby="howH">
+    <h2 id="howH">How it works</h2>
+    <ol class="how-steps">
+      <li>
+        <span class="dia" aria-hidden="true"><b>1</b></span>
+        <div><h3>Tap the sign</h3>
+        <p>Phone on the mount, one tap as you pass a pothole. Or your pillion taps. The screen edge flashes green so you know it's logged without looking twice, and red if you missed the button.</p></div>
+      </li>
+      <li>
+        <span class="dia" aria-hidden="true"><b>2</b></span>
+        <div><h3>It works out who fixes it</h3>
+        <p>The app looks up the road, suburb and your direction of travel. Main roads go to VicRoads. Everything else goes to the right council, and it knows all 79 in Victoria.</p></div>
+      </li>
+      <li>
+        <span class="dia" aria-hidden="true"><b>3</b></span>
+        <div><h3>Send it from your own email</h3>
+        <p>When you're off the bike, one tap opens a ready-to-send email with the GPS spot, a map link and the time. It goes from you, with your name on it, so councils treat it as a real complaint from a real rider.</p></div>
+      </li>
+    </ol>
+  </section>
+
+  <section aria-labelledby="featH">
+    <h2 id="featH">Made for riding</h2>
+    <div class="features">
+      <div class="feat"><h3>Pothole-ahead warnings</h3><p>A voice or beep warns you about potholes other riders have logged on the road ahead, going your way.</p></div>
+      <div class="feat"><h3>The riders' map</h3><p>Every pothole riders have found, coloured by age. Ridden past one? Say it's gone, &ldquo;fixed&rdquo;, or still there.</p></div>
+      <div class="feat"><h3>One tap from your home screen</h3><p>On Android, press and hold the app icon for a <b>Log a pothole</b> shortcut. It logs one the moment the app opens.</p></div>
+      <div class="feat"><h3>Drop a pin</h3><p>Remember one from yesterday's ride? Place it on the map and it's sent as an estimated location.</p></div>
+      <div class="feat"><h3>Works with no signal</h3><p>Out in the hills with no reception? It still logs the spot and looks up the road once you're back in range.</p></div>
+      <div class="feat"><h3>No double-ups</h3><p>The app remembers what you've already emailed, so councils don't get the same pothole from you twice.</p></div>
+    </div>
+  </section>
+
+  <section class="worst-box" id="worstBox" hidden aria-labelledby="worstH">
+    <h2 id="worstH">Worst offenders</h2>
+    <p class="hint">Councils with the most potholes riders have reported in their area, live.</p>
+    <ol class="worst-list" id="aWorst"></ol>
+    <p class="vr-line" id="aVr" hidden>VicRoads roads <b id="aVrN"></b><small>Potholes on VicRoads roads statewide. They also count in their council's area above.</small></p>
+  </section>
+
+  <section id="install" aria-labelledby="installH">
+    <h2 id="installH">Put it on your phone</h2>
+    <p>It's a web app, so there's nothing to download from an app store. Open it once and add it to your home screen.</p>
+    <div class="install">
+      <div class="feat">
+        <h3>Android</h3>
+        <ol class="steps">
+          <li>Open <b>motopotholereporter.au</b> in Chrome.</li>
+          <li>Tap the sign once and choose <b>Allow</b> for location.</li>
+          <li>Chrome menu <b>&#8942;</b> &rarr; <b>Install app</b>. Choose Install, not &ldquo;Create shortcut&rdquo;.</li>
+          <li>Press and hold the new icon for the <b>Log a pothole</b> shortcut.</li>
+        </ol>
+      </div>
+      <div class="feat">
+        <h3>iPhone</h3>
+        <ol class="steps">
+          <li>Open <b>motopotholereporter.au</b> in Safari.</li>
+          <li>Tap the sign once and choose <b>Allow</b> for location.</li>
+          <li>Tap <b>Share</b> &rarr; <b>Add to Home Screen</b>.</li>
+        </ol>
+      </div>
+    </div>
+    <a class="btn primary wide" href="./">Open the app</a>
+  </section>
+
+  <section aria-labelledby="privH">
+    <h2 id="privH">Your privacy</h2>
+    <div class="priv">
+      <div class="feat">
+        <h3>What goes on the riders' map</h3>
+        <p>Only the spot, which way you were going (to the nearest 10&deg;) and the day. You can turn sharing off in the app.</p>
+      </div>
+      <div class="feat">
+        <h3>What never leaves your phone</h3>
+        <p>Your name, phone number and email stay on your phone. They only go in the emails you choose to send. No account, no tracking, and no time of day or IP address is stored.</p>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer class="about-foot">
+  <a class="btn primary" href="./">Open the app</a>
+  <p><a class="linkish" id="aFeedback" href="mailto:j.clissoldyasa@gmail.com?subject=Motorcycle%20Pothole%20Reporter%20feedback">Feedback</a></p>
+</footer>
+
+<script src="about.js"></script>
+</body>
+</html>

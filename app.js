@@ -997,7 +997,8 @@
   applyAwake();
 
   // ---------- share with other riders ----------
-  const SITE=NEW_SITE;
+  // Shared links go to the about page, so people see what it is before they open the app.
+  const SITE=NEW_SITE+"about";
   function shareText(){
     const t=S.stats&&S.stats.total;
     return "Sick of dodging potholes? Help keep riders upright. Log them in one tap and they're sent to whoever's meant to fix them, VicRoads or the council. Plus a live map of every hole riders have found"+(t?", "+t.toLocaleString("en-AU")+" and counting.":".");
