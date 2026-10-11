@@ -129,6 +129,7 @@ ul.councils li:first-child{border-top:none}
 .crow strong{font-size:.98rem}
 .cemail{font-size:.88rem;word-break:break-all;margin-top:2px}
 .cemail.none{color:var(--muted);word-break:normal}
+.cnote{color:var(--muted);word-break:normal;font-size:.8rem}
 .clinks{display:flex;gap:14px;font-size:.85rem;margin-top:2px}
 .clinks a{color:inherit}
 .cedit{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap}

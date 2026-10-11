@@ -70,12 +70,12 @@
   // Sources: each authority's own "report a road hazard" page, October 2026.
   const ROADS={
     vic:{short:"VicRoads",name:"VicRoads (main roads and freeways)",phone:"13 11 70",email:TO,web:"www.vicroads.vic.gov.au"},
-    nsw:{short:"Transport for NSW",name:"Transport for NSW (state roads)",phone:"131 700",email:"",web:"www.transport.nsw.gov.au/contact-us"},
-    qld:{short:"Transport and Main Roads",name:"Transport and Main Roads (state-controlled roads)",phone:"13 19 40",email:"",web:"www.tmr.qld.gov.au/Contact-us"},
+    nsw:{short:"Transport for NSW",name:"Transport for NSW (state roads)",phone:"131 700",email:"",web:"www.nsw.gov.au/departments-and-agencies/transport-for-nsw/contact-us"},
+    qld:{short:"Transport and Main Roads",name:"Transport and Main Roads (state-controlled roads)",phone:"13 19 40",email:"131940.tti@tmr.qld.gov.au",web:"www.qld.gov.au/transport/conditions/report/repair"},
     sa:{short:"DIT",name:"Department for Infrastructure and Transport (state roads)",phone:"1800 018 313",email:"",web:"dit.sa.gov.au/contact-us"},
     wa:{short:"Main Roads WA",name:"Main Roads WA (state roads)",phone:"138 138",email:"enquiries@mainroads.wa.gov.au",web:"www.mainroads.wa.gov.au/contact-us/"},
-    tas:{short:"State Growth",name:"Department of State Growth (state roads)",phone:"1300 139 933",email:"",web:"www.transport.tas.gov.au/managing_the_roads/contact_us/report_a_road_hazard_or_issue"},
-    act:{short:"ACT Government",name:"ACT Government, Fix My Street (all roads)",phone:"13 22 81",email:"",web:"www.act.gov.au/fixmystreet"},
+    tas:{short:"Building Tasmania",name:"Building Tasmania (state roads)",phone:"1300 139 933",email:"info@building.tas.gov.au",web:"www.transport.tas.gov.au/road_permits/contact_us/report-a-hazard"},
+    act:{short:"ACT Government",name:"ACT Government, Fix My Street (all roads)",phone:"13 22 81",email:"",web:"www.accesscanberra.act.gov.au/city-services/fix-my-street"},
     nt:{short:"NT Government",name:"NT Government roads (territory roads)",phone:"1800 246 199",email:"roadreporting.ntg@nt.gov.au",web:"nt.gov.au/driving/safety/report-a-road-fault"}};
   const STATE_NAMES={vic:"Victoria",nsw:"New South Wales",qld:"Queensland",sa:"South Australia",wa:"Western Australia",tas:"Tasmania",act:"Australian Capital Territory",nt:"Northern Territory"};
   // Nominatim gives "Victoria" and "AU-VIC"; OpenStreetMap boundaries give "AU-VIC".
@@ -104,8 +104,13 @@
   const shortCouncil=(k,raw)=>councilName(k,raw).replace(/^City of /,"").replace(/( (Rural City|City|Shire|Borough|Regional|Municipal))? Council$/,"");
   // Your own email for a council (or a road authority, key "road:vic") wins over the built-in one.
   const councilEmail=k=>(S.councils[k]||(CINFO[k]||{}).email||"").trim();
-  const roadEmail=st=>(S.councils["road:"+st]||(ROADS[st]||{}).email||"").trim();
-  const roadName=st=>ROADS[st]?ROADS[st].short:"Main roads";
+  // Queensland main-road reports go to the Transport and Main Roads office for that spot (q.roadTo, from QLDTraffic),
+  // so their send key is "qld|office email". Everywhere else, and once you set your own email, it's just the state.
+  const roadKey=q=>{const st=stateOf(q);return st&&q.roadTo&&!S.councils["road:"+st]?st+"|"+q.roadTo:st};
+  const keySt=k=>(k||"").split("|")[0];
+  const roadEmail=k=>(S.councils["road:"+keySt(k)]||(k||"").split("|")[1]||(ROADS[keySt(k)]||{}).email||"").trim();
+  const roadName=k=>{const st=keySt(k),base=ROADS[st]?ROADS[st].short:"Main roads";if(!k||!k.includes("|"))return base;
+    const q=S.queue.find(q=>roadKey(q)===k);return q&&q.roadOffice?q.roadOffice:base};
   // Older versions keyed saved emails by bare council name ("melton", "vicroads") and suburbs by name alone,
   // and called main-road reports "vicroads". Everything back then was Victorian.
   if(!S.keysV2){
@@ -185,6 +190,23 @@
     }
     return null;
   }
+  // Queensland's own road lookup (QLDTraffic) names the Transport and Main Roads office for a spot and its email.
+  // It answers for anywhere within a few hundred metres of a state road, so it picks the office, not whose road it is.
+  const QLD_LOOKUP="https://r8s97t2t19.execute-api.ap-southeast-2.amazonaws.com/prod/lookuproad";
+  const needsQld=q=>stateOf(q)==="qld"&&!q.qldDone&&(q.qldTries||0)<4;
+  async function qldOffice(q){
+    const ctl=new AbortController(),t=setTimeout(()=>ctl.abort(),8000);
+    try{
+      const r=await fetch(QLD_LOOKUP+"?lat="+q.lat+"&lng="+q.lng,{signal:ctl.signal});
+      if(!r.ok)throw new Error("http "+r.status);
+      const list=await r.json();if(!Array.isArray(list))throw new Error("bad reply");
+      // Toll roads and busways have their own operator; otherwise the district office.
+      const c=list.find(c=>/^(busway|transurban|private_owned)$/.test(c.contact_type))||list.find(c=>c.contact_type==="district");
+      const email=c&&/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(c.email||"")?c.email.trim().toLowerCase():"";
+      q.roadTo=email;q.roadOffice=email?String(c.display_name||"").replace(/^Department of Transport and Main Roads,?\s*/,"Transport and Main Roads, ").slice(0,80):"";
+      q.qldDone=true;
+    }catch(e){q.qldTries=(q.qldTries||0)+1}finally{clearTimeout(t)}
+  }
   // A report gets a few tries at the council lookup across app opens before we stop asking.
   const needsArea=q=>!q.areaDone&&(q.areaTries||0)<4;
   function useArea(q,area){
@@ -217,12 +239,13 @@
       q.postcode=a.postcode||"";
       if(road&&!q.roadSet)q.road=road;
       useArea(q,await areaP);
+      if(needsQld(q))await qldOffice(q);
       if(!road){q.lookup="none";applyClass(q);return false}
       q.lookup="done";applyClass(q);return true;
     }catch(e){useArea(q,await areaP);q.lookup="failed";applyClass(q);return false}
   }
   async function lookupMissing(){
-    const todo=S.queue.filter(q=>(q.lookup!=="done"&&q.lookup!=="none")||needsArea(q));
+    const todo=S.queue.filter(q=>(q.lookup!=="done"&&q.lookup!=="none")||needsArea(q)||needsQld(q));
     if(!todo.length)return;
     $("lookupBtn").disabled=true;$("lookupBtn").textContent="Looking up…";
     for(const q of todo){q.lookup="pending";renderQueue();await lookup(q);save();renderQueue()}
@@ -367,15 +390,15 @@
   }
   let pending=null;
   const forCouncil=k=>S.queue.filter(q=>q.auth==="council"&&ckeyOf(q)===k);
-  const forRoad=st=>S.queue.filter(q=>q.auth==="road"&&stateOf(q)===st);
+  const forRoad=k=>S.queue.filter(q=>q.auth==="road"&&roadKey(q)===k);
   // One entry per council ("state:core name"), however its name was spelt on each report. Value is a name to show.
   const councilsInQueue=()=>{const m=new Map();S.queue.filter(q=>q.auth==="council").forEach(q=>{const k=ckeyOf(q);if(!m.has(k))m.set(k,q.council||"")});return m};
-  const roadStatesInQueue=()=>[...new Set(S.queue.filter(q=>q.auth==="road").map(stateOf))];
+  const roadKeysInQueue=()=>[...new Set(S.queue.filter(q=>q.auth==="road").map(roadKey))];
   // Riders often send the email and never come back to tap "mark as sent". So each pothole remembers the email
   // it went into (q.emailed), the app asks about it next time, and leaves it out of the next email unless asked.
   const dayName=at=>{const d=new Date(at),t=new Date();return d.toDateString()===t.toDateString()?"today":new Date(t-864e5).toDateString()===d.toDateString()?"yesterday":d.toLocaleDateString("en-AU",{weekday:"short",day:"numeric",month:"short"})};
   const emailGroups=()=>{const m=new Map();S.queue.forEach(q=>{if(!q.emailed)return;const g=m.get(q.emailed.at)||{at:q.emailed.at,label:q.emailed.to,subject:q.emailed.subject,ids:[]};g.ids.push(q.id);m.set(g.at,g)});return[...m.values()].sort((a,b)=>a.at.localeCompare(b.at))};
-  // who is "council" (key "vic:melton") or "road" (key "vic").
+  // who is "council" (key "vic:melton") or "road" (key "vic", or "qld|office email").
   function emailTargets(who,key){
     const items=who==="council"?forCouncil(key):forRoad(key);
     if(!items.length)return null;
@@ -385,8 +408,8 @@
     const name=who==="council"?councilName(key,raw):roadName(key);
     const to=who==="council"?councilEmail(key):roadEmail(key);
     if(!to){
-      focusCouncil(who==="council"?key:"road:"+key);
-      const known=who==="council"?councilInfo(key):ROADS[key];
+      focusCouncil(who==="council"?key:"road:"+keySt(key));
+      const known=who==="council"?councilInfo(key):ROADS[keySt(key)];
       msg(known&&known.web?name+" takes reports on its website or by phone, not by email. Use those, or add an email under Council contacts.":"Add an email for "+name+" under Council contacts first.","err");
       return null;
     }
@@ -545,9 +568,9 @@
     // Main roads: one button per state's road authority. The grey placeholder shows when there are none.
     $("sendBtn").hidden=!!vr.length;
     const rb=$("roadBtns");rb.innerHTML="";
-    roadStatesInQueue().forEach(st=>{
+    roadKeysInQueue().forEach(st=>{
       const its=forRoad(st),b=document.createElement("button");b.type="button";b.className="btn primary";
-      b.textContent=!st?its.length+" main-road "+(its.length===1?"report needs":"reports need")+" a state":emailLabel(its)+" to "+roadName(st)+(roadEmail(st)?"":ROADS[st]?" (website only)":" (add email first)");
+      b.textContent=!st?its.length+" main-road "+(its.length===1?"report needs":"reports need")+" a state":emailLabel(its)+" to "+roadName(st)+(roadEmail(st)?"":ROADS[keySt(st)]?" (website only)":" (add email first)");
       b.onclick=()=>openEmail("road",st);rb.appendChild(b);
     });
     const box=$("councilBtns");box.innerHTML="";
@@ -558,11 +581,14 @@
     });
     syncCouncils();setUrgent();
     $("clearBtn").hidden=$("swipeHint").hidden=!S.queue.length;if(!S.queue.length)$("clearConfirm").hidden=true;
-    $("lookupBtn").hidden=!S.queue.some(q=>q.lookup==="failed"||q.lookup==="offline"||(q.lookup==="done"&&needsArea(q)));
+    $("lookupBtn").hidden=!S.queue.some(q=>q.lookup==="failed"||q.lookup==="offline"||(q.lookup==="done"&&(needsArea(q)||needsQld(q))));
   }
-  // The footer's "urgent danger" number is the road authority for wherever you last logged a pothole (VicRoads to start).
+  // The footer's "urgent danger" number is the road authority for wherever you last logged a pothole.
+  // Before the first report, the phone's time zone is a good guess at the state.
+  const TZ_STATE={Melbourne:"vic",Sydney:"nsw",Brisbane:"qld",Lindeman:"qld",Adelaide:"sa",Broken_Hill:"nsw",Perth:"wa",Hobart:"tas",Currie:"tas",Darwin:"nt",Canberra:"act",ACT:"act",NSW:"nsw",Victoria:"vic",Queensland:"qld",South:"sa",West:"wa",Tasmania:"tas",North:"nt"};
+  const tzState=()=>{try{const z=Intl.DateTimeFormat().resolvedOptions().timeZone||"";return z.startsWith("Australia/")?TZ_STATE[z.slice(10)]||"":""}catch(e){return ""}};
   function setUrgent(){
-    const st=[...S.queue].reverse().concat(...S.history.map(h=>h.items||[])).map(stateOf).find(x=>ROADS[x])||"vic";
+    const st=[...S.queue].reverse().concat(...S.history.map(h=>h.items||[])).map(stateOf).find(x=>ROADS[x])||tzState()||"vic";
     $("urgent").textContent=ROADS[st].short+" on "+ROADS[st].phone;
   }
   // ---------- council contacts ----------
@@ -622,13 +648,14 @@
       const li=document.createElement("li");li.dataset.key=k;
       const top=document.createElement("div");top.className="crow";
       const nm=document.createElement("strong");nm.textContent=info.name;
-      if(inQ.has(k)||(vr&&forRoad(st).length)){const t=document.createElement("span");t.className="tag";t.textContent="On your list";nm.append(" ",t)}
+      if(inQ.has(k)||(vr&&S.queue.some(q=>q.auth==="road"&&stateOf(q)===st))){const t=document.createElement("span");t.className="tag";t.textContent="On your list";nm.append(" ",t)}
       const ch=document.createElement("button");ch.type="button";ch.className="mini";ch.textContent=editing===k?"Close":email?"Change email":"Add email";
       ch.onclick=()=>{editing=editing===k?null:k;renderCouncils();if(editing===k){const el=list.querySelector('li[data-key="'+CSS.escape(k)+'"] input');if(el)el.focus()}};
       top.append(nm,ch);
       const em=document.createElement("div");em.className="cemail";
       if(email){em.textContent=email;if(mine){const t=document.createElement("span");t.className="tag mine";t.textContent="Your email";em.append(" ",t)}}
       else{em.textContent=info.web?"No email. Reports go through their website or by phone.":"No email yet. Add one to send reports here.";em.classList.add("none")}
+      if(vr&&st==="qld"&&!mine){const n=document.createElement("small");n.className="cnote";n.textContent="Reports go to the local Transport and Main Roads office for each spot, found with QLDTraffic. This address is used when no office is found.";em.append(document.createElement("br"),n)}
       const links=document.createElement("div");links.className="clinks";
       if(info.phone){const a=document.createElement("a");a.href="tel:"+info.phone.replace(/[^\d+]/g,"");a.textContent=info.phone;links.append(a)}
       if(info.web){const a=document.createElement("a");a.href="https://"+info.web;a.target="_blank";a.rel="noopener";a.textContent="Website";links.append(a)}
@@ -1187,7 +1214,7 @@
   renderQueue();renderCouncils();renderHistory();renderStats();save();askSent();
   if(movedIn)setTimeout(()=>toast("Moved to motopotholereporter.au with your reports. Reinstall the app from here so your icon opens the new address.",null,9000),400);
   fetchStats();shareMissing();flushUnshare();
-  if(S.queue.some(q=>q.lookup==="failed"||q.lookup==="offline"||needsArea(q)))lookupMissing();
+  if(S.queue.some(q=>q.lookup==="failed"||q.lookup==="offline"||needsArea(q)||needsQld(q)))lookupMissing();
 
   // ---------- one tap from the home screen ----------
   // The "Log a pothole" app shortcut (and any link ending ?report=1) logs one as soon as the app opens.
