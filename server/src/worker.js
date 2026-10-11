@@ -1,3 +1,5 @@
+import { COUNCIL_KEYS } from "./councils.gen.js";
+
 // Shared pothole map for Motorcycle Pothole Reporter.
 // Stores only where a pothole is and the day it was logged. No names, roads, times or IP addresses.
 
@@ -12,11 +14,8 @@ const KINDS = ["gone", "fixed", "there"];
 // States and territories, as the app names them.
 const STATES = new Set(["vic", "nsw", "qld", "sa", "wa", "tas", "act", "nt"]);
 // Councils by "state:core name" (matches the app's keys). Anything else is refused, so the league only shows real councils.
-// Victoria and NSW so far; add each state's list as the app gets its contacts (keys must match coreName() in the app).
-const VIC_COUNCILS = ["alpine", "ararat", "ballarat", "banyule", "bass coast", "baw baw", "bayside", "benalla", "boroondara", "brimbank", "buloke", "campaspe", "cardinia", "casey", "central goldfields", "colac otway", "corangamite", "darebin", "east gippsland", "frankston", "gannawarra", "glen eira", "glenelg", "golden plains", "greater bendigo", "greater dandenong", "greater geelong", "greater shepparton", "hepburn", "hindmarsh", "hobsons bay", "horsham", "hume", "indigo", "kingston", "knox", "latrobe", "loddon", "macedon ranges", "manningham", "mansfield", "maribyrnong", "maroondah", "melbourne", "melton", "merri bek", "mildura", "mitchell", "moira", "monash", "moonee valley", "moorabool", "mornington peninsula", "mount alexander", "moyne", "murrindindi", "nillumbik", "northern grampians", "port phillip", "pyrenees", "queenscliffe", "south gippsland", "southern grampians", "stonnington", "strathbogie", "surf coast", "swan hill", "towong", "wangaratta", "warrnambool", "wellington", "west wimmera", "whitehorse", "whittlesea", "wodonga", "wyndham", "yarra", "yarra ranges", "yarriambiack"];
-// New South Wales' 128, from the NSW Office of Local Government directory.
-const NSW_COUNCILS = ["albury", "armidale", "ballina", "balranald", "bathurst", "bayside", "bega valley", "bellingen", "berrigan", "blacktown", "bland", "blayney", "blue mountains", "bogan", "bourke", "brewarrina", "broken hill", "burwood", "byron", "cabonne", "camden", "campbelltown", "canterbury bankstown", "carrathool", "central coast", "central darling", "cessnock", "canada bay", "parramatta", "ryde", "sydney", "clarence valley", "cobar", "coffs harbour", "coolamon", "coonamble", "cootamundra gundagai", "cowra", "cumberland", "dubbo", "dungog", "edward river", "eurobodalla", "fairfield", "federation", "forbes", "georges river", "gilgandra", "glen innes severn", "goulburn mulwaree", "greater hume", "griffith", "gunnedah", "gwydir", "hawkesbury", "hay", "hilltops", "hornsby", "hunters hill", "inner west", "inverell", "junee", "kempsey", "kiama", "ku ring gai", "kyogle", "lachlan", "lake macquarie", "lane cove", "leeton", "lismore", "lithgow", "liverpool", "liverpool plains", "lockhart", "maitland", "mid coast", "mid western", "moree plains", "mosman", "murray river", "murrumbidgee", "muswellbrook", "nambucca valley", "narrabri", "narrandera", "narromine", "newcastle", "north sydney", "northern beaches", "oberon", "orange", "parkes", "penrith", "port macquarie hastings", "port stephens", "queanbeyan palerang", "randwick", "richmond valley", "shellharbour", "shoalhaven", "singleton", "snowy monaro", "snowy valleys", "strathfield", "sutherland", "tamworth", "temora", "tenterfield", "hills", "tweed", "upper hunter", "upper lachlan", "uralla", "wagga wagga", "walcha", "walgett", "warren", "warrumbungle", "waverley", "weddin", "wentworth", "willoughby", "wingecarribee", "wollondilly", "wollongong", "woollahra", "yass valley"];
-const COUNCILS = new Set([...VIC_COUNCILS.map(c => "vic:" + c), ...NSW_COUNCILS.map(c => "nsw:" + c)]);
+// The list is generated from the app's councils.js: run `node sync-councils.mjs` after changing it.
+const COUNCILS = new Set(COUNCIL_KEYS);
 const MAX_BODY = 512; // bytes; a report is just {"lat":..,"lng":..}
 const MAX_POINTS = 20000;
 

@@ -33,7 +33,10 @@ The app is served from Cloudflare (static assets, `wrangler.jsonc` + `site-worke
 
 - Councils and saved emails are keyed `state:core name` (`vic:melton`), road authorities `road:vic`, because council and suburb names repeat across states.
 
-- `councils.js` lists all 128 NSW councils (NSW Office of Local Government directory: phone, general email, website; Newcastle has no email so goes via its website) and all 79 Victorian councils with the phone, customer-service email (which takes road hazard reports) and website, from the Vic Councils (MAV) council contacts list. Melbourne and Port Phillip take reports only through their websites.
+- `councils.js` lists every council in every state with councils (539): Victoria 79 (Vic Councils/MAV), NSW 128 (Office of Local Government directory), Queensland 78 (Local Government Directory), SA 68 (LGA SA council database), WA 139 (WALGA directory), Tasmania 29 (LGAT) and the NT 18 (NT.GOV.AU list plus each council's website). Each has phone, general email and website; Melbourne, Port Phillip, Newcastle, Brisbane, Canning and Belyuen have no email so go via their websites. The ACT has no councils.
+- The server's list of accepted council keys (`server/src/councils.gen.js`) is generated from `councils.js` and the app's `coreName()` by `node server/sync-councils.mjs` (also run by `npm run dev` and `npm run deploy`).
+- `RENAMED` in `app.js` maps councils OpenStreetMap still knows by an old name (District Council of Grant → Southern Limestone Coast, Belyuen Shire → Belyuen Community Government Council).
+- Victorian entries use the customer-service email, which takes road hazard reports; elsewhere it is the council's general email.
 - "Council contacts" opens a list of states and territories. Each shows its road authority (`ROADS` in `app.js`) and councils: Victoria's full list, elsewhere just the councils from your reports until each state's list is added. Anyone can change the email for any council or road authority. Changes are saved on that phone only, with "Use standard" to go back.
 - Council names from OpenStreetMap ("Shire of Moorabool") are matched to the list ("Moorabool Shire Council") on the core name.
 

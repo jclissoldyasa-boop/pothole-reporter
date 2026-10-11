@@ -62,8 +62,9 @@
 
   // Every Victorian council (councils.js). OpenStreetMap says "Shire of Moorabool", the council says
   // "Moorabool Shire Council", so both are matched on the core name ("moorabool").
-  // NSW adds "Armidale Regional Council", "Mosman Municipal Council" and "Sydney, Council of the City of".
-  function coreName(n){return(n||"").toLowerCase().replace(/[-',.]/g," ").replace(/\b(city|shire|rural|borough|regional|municipal|municipality|council|of|the)\b/g," ").replace(/\s+/g," ").trim()}
+  // Other states add "Armidale Regional Council", "Sydney, Council of the City of", "Bundaberg Region" (OSM),
+  // "The Corporation of the City of Whyalla", "Clare & Gilbert Valleys" and "Town of Alice Springs" (OSM).
+  function coreName(n){return(n||"").toLowerCase().replace(/&/g," and ").replace(/[-',.]/g," ").replace(/\b(city|shire|town|rural|borough|regional|region|municipal|municipality|corporation|council|of|the)\b/g," ").replace(/\s+/g," ").trim()}
   // ---------- states, road authorities and councils ----------
   // Main roads in each state go to its road authority. An empty email means it only takes reports by phone or on its website.
   // Sources: each authority's own "report a road hazard" page, October 2026.
@@ -85,14 +86,19 @@
   }
   // Every council we have contacts for, keyed "state:core name" (e.g. "vic:melton"), because names repeat
   // across states (Campbelltown is in NSW and SA). From councils.js; more states to come.
-  const COUNCIL_LISTS={vic:window.VIC_COUNCILS||[],nsw:window.NSW_COUNCILS||[]};
+  const COUNCIL_LISTS={vic:window.VIC_COUNCILS||[],nsw:window.NSW_COUNCILS||[],qld:window.QLD_COUNCILS||[],sa:window.SA_COUNCILS||[],
+    wa:window.WA_COUNCILS||[],tas:window.TAS_COUNCILS||[],nt:window.NT_COUNCILS||[]};
   const CINFO={};Object.entries(COUNCIL_LISTS).forEach(([st,l])=>l.forEach(([name,phone,email,web])=>{CINFO[st+":"+coreName(name)]={name,phone,email,web}}));
   const keyState=k=>k.startsWith("road:")?k.slice(5):k.slice(0,k.indexOf(":"));
   const keyCore=k=>k.slice(k.indexOf(":")+1);
   const titleCase=t=>t.replace(/\b\w/g,x=>x.toUpperCase());
   // Which state a report is in: from the lookup, or (older reports) from a Victorian council name.
   function stateOf(q){return q.st||stateCode(q.state)||(q.council&&CINFO["vic:"+coreName(q.council)]?"vic":"")}
-  const ckeyOf=q=>q.council?(stateOf(q)||"?")+":"+coreName(q.council):"";
+  // Councils renamed since OpenStreetMap last caught up: its name on the left, ours on the right.
+  // Also NT councils OpenStreetMap calls by an older name ("Belyuen Shire").
+  const RENAMED={"sa:district grant":"sa:southern limestone coast","sa:district lower eyre peninsula":"sa:lower eyre",
+    "nt:belyuen":"nt:belyuen community government","nt:coomalie":"nt:coomalie community government"};
+  const ckeyOf=q=>{if(!q.council)return "";const k=(stateOf(q)||"?")+":"+coreName(q.council);return RENAMED[k]||k};
   const councilInfo=k=>CINFO[k]||null;
   const councilName=(k,raw)=>CINFO[k]?CINFO[k].name:(raw||titleCase(keyCore(k)));
   const shortCouncil=(k,raw)=>councilName(k,raw).replace(/^City of /,"").replace(/( (Rural City|City|Shire|Borough|Regional|Municipal))? Council$/,"");
@@ -172,7 +178,8 @@
         const state=rels.find(e=>e.tags.admin_level==="4"),st=state?stateCode(state.tags["ISO3166-2"])||stateCode(state.tags.name):"";
         // Sydney Harbour's wharves and islands are mapped like councils, so a council on our list wins when a spot is in both.
         const areas=rels.filter(e=>e.tags.admin_level==="6"&&e.tags.name);
-        const area=areas.find(e=>CINFO[st+":"+coreName(e.tags.name)])||areas[0];
+        const known=e=>{const k=st+":"+coreName(e.tags.name);return CINFO[RENAMED[k]||k]};
+        const area=areas.find(known)||areas[0];
         return{council:area?area.tags.name:"",st,ways:els.filter(e=>e.type==="way"&&e.tags).map(e=>e.tags)};
       }catch(e){}finally{clearTimeout(t)}
     }
@@ -563,8 +570,13 @@
   let editing=null,openState=null;
   const STATE_ORDER=["vic","nsw","qld","sa","wa","tas","act","nt"];
   const SOURCES={vic:"Council details from the Vic Councils (Municipal Association of Victoria) contacts list.",
-    nsw:"Council details from the NSW Office of Local Government council directory."};
-  const SEARCH_EG={vic:"Geelong",nsw:"Blacktown"};
+    nsw:"Council details from the NSW Office of Local Government council directory.",
+    qld:"Council details from the Queensland Local Government Directory, checked against each council's website.",
+    sa:"Council details from the Local Government Association of SA council contacts list.",
+    wa:"Council details from the WALGA Western Australian Local Government Directory.",
+    tas:"Council details from the Local Government Association of Tasmania contacts list.",
+    nt:"Councils from NT.GOV.AU, with contact details from each council's website."};
+  const SEARCH_EG={vic:"Geelong",nsw:"Blacktown",qld:"Logan",sa:"Onkaparinga",wa:"Stirling",tas:"Kingborough",nt:"Palmerston"};
   // Councils in a state: the ones we have contacts for, plus any met on the road or given an email. Key → name.
   function councilsIn(st){
     const all=new Map(Object.entries(CINFO).filter(([k])=>keyState(k)===st).map(([k,i])=>[k,i.name]));
