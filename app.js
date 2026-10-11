@@ -483,8 +483,35 @@
     $("lookupBtn").hidden=!S.queue.some(q=>q.lookup==="failed"||q.lookup==="offline"||(q.lookup==="done"&&needsArea(q)));
   }
   // ---------- council contacts ----------
-  let editing=null;
+  let editing=null,openState=null;
+  // Only Victoria has council contacts so far; the rest show as coming soon.
+  const STATES=[
+    {k:"vic",name:"Victoria",source:"Council details from the Vic Councils (Municipal Association of Victoria) contacts list."},
+    {k:"nsw",name:"New South Wales"},{k:"qld",name:"Queensland"},{k:"sa",name:"South Australia"},{k:"wa",name:"Western Australia"},
+    {k:"tas",name:"Tasmania"},{k:"act",name:"Australian Capital Territory"},{k:"nt",name:"Northern Territory"}];
+  function renderStates(){
+    const ul=$("stateList");ul.innerHTML="";
+    const inQ=new Set(S.queue.filter(q=>q.council).map(q=>coreName(q.council)));
+    STATES.forEach(st=>{
+      const li=document.createElement("li");
+      const b=document.createElement("button");b.type="button";b.className="state";
+      const nm=document.createElement("strong");nm.textContent=st.name;
+      const sub=document.createElement("span");sub.className="sub";
+      if(st.k==="vic"){
+        const n=Object.keys(VIC).length,on=[...inQ].filter(k=>VIC[k]).length;
+        sub.textContent=n+" councils + VicRoads";
+        if(on){const t=document.createElement("span");t.className="tag";t.textContent=on+" on your list";nm.append(" ",t)}
+        b.onclick=()=>{openState="vic";$("councilSearch").value="";editing=null;renderCouncils();$("stateBack").focus()};
+      }else{sub.textContent="Coming soon";b.disabled=true}
+      b.append(nm,sub);li.append(b);ul.append(li);
+    });
+  }
+  $("stateBack").addEventListener("click",()=>{openState=null;editing=null;renderCouncils();$("stateList").querySelector("button").focus()});
   function renderCouncils(){
+    const st=STATES.find(x=>x.k===openState);
+    $("stateList").hidden=!!st;$("stateView").hidden=!st;
+    if(!st){renderStates();return}
+    $("stateTitle").textContent=st.name;$("councilSource").textContent=st.source||"";
     const list=$("councilList");list.innerHTML="";
     const term=$("councilSearch").value.trim().toLowerCase();
     const inQ=new Set(S.queue.filter(q=>q.council).map(q=>coreName(q.council)));
@@ -531,7 +558,7 @@
   }
   $("councilSearch").addEventListener("input",renderCouncils);
   function focusCouncil(c){
-    const k=coreName(c);$("councilBox").open=true;$("councilSearch").value="";editing=k;renderCouncils();
+    const k=coreName(c);$("councilBox").open=true;openState="vic";$("councilSearch").value="";editing=k;renderCouncils();
     const li=$("councilList").querySelector('li[data-key="'+CSS.escape(k)+'"]');
     if(li){li.scrollIntoView({block:"center"});const el=li.querySelector("input");if(el)el.focus()}
   }
