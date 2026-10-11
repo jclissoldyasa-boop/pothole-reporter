@@ -1,7 +1,7 @@
 // Shared pothole map for Motorcycle Pothole Reporter.
 // Stores only where a pothole is and the day it was logged. No names, roads, times or IP addresses.
 
-const ORIGINS = ["https://jclissoldyasa-boop.github.io"];
+const ORIGINS = ["https://motopotholereporter.au", "https://jclissoldyasa-boop.github.io"];
 const LOCAL = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/;
 // Rough box around Australia, so typos and junk don't land on the map.
 const BOUNDS = { latMin: -44.5, latMax: -9, lngMin: 112, lngMax: 154.5 };
@@ -201,7 +201,7 @@ export default {
     }
 
     if (url.pathname === "/") {
-      return new Response("Motorcycle Pothole Reporter map server. The app is at https://jclissoldyasa-boop.github.io/pothole-reporter/\n",
+      return new Response("Motorcycle Pothole Reporter map server. The app is at https://motopotholereporter.au/\n",
         { headers: { "Content-Type": "text/plain" } });
     }
     return json(req, { error: "not found" }, 404);

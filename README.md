@@ -2,7 +2,7 @@
 
 One tap logs a pothole's GPS location, road, travel direction and time, sorts it to VicRoads or the council for that spot (e.g. Melton, Moorabool), opens a filled-in email to send, and puts it on the riders' pothole map.
 
-Live: https://jclissoldyasa-boop.github.io/pothole-reporter/
+Live: https://motopotholereporter.au/ (moved from https://jclissoldyasa-boop.github.io/pothole-reporter/ on 2026-10-11)
 
 ## Put it on your phone
 
@@ -14,7 +14,7 @@ Ride safe: mount the phone, one tap, eyes back on the road. Or have your pillion
 
 ## Updating
 
-Push changes to `main`; GitHub Pages republishes. The phone picks up the new version the next time the app opens with signal.
+The app is served from Cloudflare (static assets, `wrangler.jsonc` + `site-worker.js` in this folder; `.assetsignore` keeps `server/` and these files off the site). Deploy with `server/node_modules/.bin/wrangler deploy` from this folder. Also push to `main`: GitHub Pages still serves the old address, where `app.js` hands each phone's saved data to the new address once (in the link after `#`, which never leaves the phone) and then just forwards. The phone picks up the new version the next time the app opens with signal.
 
 ## Riders' map and counter
 
@@ -26,7 +26,7 @@ Push changes to `main`; GitHub Pages republishes. The phone picks up the new ver
 - The header shows potholes reported by riders, potholes "fixed", and the top 3 worst-offender councils (most potholes reported on council roads). The phone tells the server the council (core name, validated against the 79) only for council-road potholes.
 - Deleting a report on the phone (meant for mistakes) takes it off the map and out of the counts (the phone keeps a private delete key for each one). Sharing can be turned off in "Your details".
 - API: `GET /api/stats`, `GET /api/potholes?days=30`, `POST /api/potholes {lat,lng}`, `POST /api/potholes/:id/flag {kind: gone|fixed|there}`, `POST /api/potholes/:id/council {council}` and `POST /api/potholes/:id/fixed` (owner only, `X-Delete-Key`), `DELETE /api/potholes/:id` with `X-Delete-Key`. Posts are limited to 120 an hour per IP (salted, daily-rotating hash) and must be inside Australia.
-- Deploy the server: `cd server && npm install && npm run deploy` (needs `wrangler login`). Live at https://pothole-reporter.drivemate-app.workers.dev
+- Deploy the server: `cd server && npm install && npm run deploy` (needs `wrangler login`). Live at https://api.motopotholereporter.au (and https://pothole-reporter.drivemate-app.workers.dev, kept for phones on older versions)
 - A copy of the app opened from `localhost` talks to `wrangler dev` on port 8787 instead, so testing doesn't touch the live map.
 
 ## Council contacts

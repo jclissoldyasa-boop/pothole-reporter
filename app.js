@@ -1,11 +1,29 @@
 (function(){
   "use strict";
+  // ---------- moved to motopotholereporter.au ----------
+  // Saved data belongs to the web address, so the old GitHub address hands it over once, inside the link
+  // (after the #, which never leaves the phone), then just forwards. Offline, it stays put and works as before.
+  const NEW_SITE="https://motopotholereporter.au/";
+  if(location.hostname==="jclissoldyasa-boop.github.io"){
+    let raw=null,done=null;
+    try{raw=localStorage.getItem("pothole_reporter_v1");done=localStorage.getItem("pothole_reporter_moved")}catch(e){}
+    if(navigator.onLine||!raw){
+      let hash="";
+      if(raw&&!done){
+        try{const u=new TextEncoder().encode(raw);let bin="";for(let i=0;i<u.length;i+=8192)bin+=String.fromCharCode.apply(null,u.subarray(i,i+8192));
+          hash="#import="+btoa(bin).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,"");
+          localStorage.setItem("pothole_reporter_moved",new Date().toISOString())}catch(e){hash=""}
+      }
+      location.replace(NEW_SITE+location.search+hash);
+      return;
+    }
+  }
   const TO="enquiries@roads.vic.gov.au";
   const DIRS=[["N","Northbound"],["NE","North-east"],["E","Eastbound"],["SE","South-east"],["S","Southbound"],["SW","South-west"],["W","Westbound"],["NW","North-west"]];
   const POS=["Left wheel track","Centre of lane","Right wheel track","Shoulder","Across the lane"];
   const SIZE=["Small","Medium","Large / deep","Deep enough to drop a bike"];
   // Shared riders' map. Local copies of the app talk to `wrangler dev`.
-  const API=/^(localhost|127\.0\.0\.1)$/.test(location.hostname)?"http://localhost:8787":"https://pothole-reporter.drivemate-app.workers.dev";
+  const API=/^(localhost|127\.0\.0\.1)$/.test(location.hostname)?"http://localhost:8787":"https://api.motopotholereporter.au";
   const $=id=>document.getElementById(id);
   const LS="pothole_reporter_v1";
   const MELTON="City of Melton";
@@ -15,6 +33,30 @@
   // Older versions kept one council email (it was always Melton's).
   if(S.me.councilEmail){if(!S.councils[MELTON])S.councils[MELTON]=S.me.councilEmail;delete S.me.councilEmail}
   function save(){try{localStorage.setItem(LS,JSON.stringify(S))}catch(e){}}
+  // Arriving from the old address with this phone's saved data. Merged by id, so nothing logged here is lost.
+  let movedIn=false;
+  if(location.hash.startsWith("#import=")){
+    try{
+      const b=atob(location.hash.slice(8).replace(/-/g,"+").replace(/_/g,"/"));
+      const v=JSON.parse(new TextDecoder().decode(Uint8Array.from(b,c=>c.charCodeAt(0))));
+      if(v&&typeof v==="object"&&v.me&&typeof v.me==="object"){
+        const arr=x=>Array.isArray(x)?x:[],obj=x=>x&&typeof x==="object"&&!Array.isArray(x)?x:{};
+        const ids=new Set(S.queue.map(q=>q.id));
+        S.queue=[...arr(v.queue).filter(q=>q&&q.id&&!ids.has(q.id)),...S.queue];
+        const hk=h=>h.at+"|"+h.subject,hs=new Set(S.history.map(hk));
+        S.history=[...S.history,...arr(v.history).filter(h=>h&&h.at&&!hs.has(hk(h)))].sort((a,b)=>String(b.at).localeCompare(String(a.at))).slice(0,50);
+        for(const k of ["name","phone","email"])if(!S.me[k]&&typeof v.me[k]==="string")S.me[k]=v.me[k];
+        if(v.me.share===false)S.me.share=false;
+        S.councils={...obj(v.councils),...S.councils};
+        S.votes={...obj(v.votes),...S.votes};
+        S.suburbCouncil={...obj(v.suburbCouncil),...S.suburbCouncil};
+        const us=new Set(S.unshare.map(u=>u.id+"|"+u.op));
+        S.unshare=[...S.unshare,...arr(v.unshare).filter(u=>u&&u.id&&!us.has(u.id+"|"+u.op))];
+        S.meReset=true;save();movedIn=true;
+      }
+    }catch(e){}
+    history.replaceState(null,"",location.pathname+location.search);
+  }
   // Early versions came with the developer's name and phone filled in, and saved them on every phone. Clear them once.
   if(!S.meReset){let h=5381;for(const c of S.me.name+"|"+S.me.phone)h=((h*33)^c.charCodeAt(0))>>>0;if(h===2492536473){S.me.name="";S.me.phone=""}S.meReset=true}
 
@@ -514,10 +556,10 @@
       ul.appendChild(li);
     });
   }
-  function toast(t,undo){
+  function toast(t,undo,ms){
     const el=$("toast");el.textContent=t;el.classList.toggle("act",!!undo);
     if(undo){const b=document.createElement("button");b.type="button";b.textContent="Undo";b.onclick=()=>{undo();el.classList.remove("show","act")};el.append(" ",b)}
-    el.classList.add("show");clearTimeout(toast._t);toast._t=setTimeout(()=>el.classList.remove("show","act"),undo?6000:2400);
+    el.classList.add("show");clearTimeout(toast._t);toast._t=setTimeout(()=>el.classList.remove("show","act"),ms||(undo?6000:2400));
   }
 
   // ---------- delete and clear ----------
@@ -955,7 +997,7 @@
   applyAwake();
 
   // ---------- share with other riders ----------
-  const SITE="https://jclissoldyasa-boop.github.io/pothole-reporter/";
+  const SITE=NEW_SITE;
   function shareText(){
     const t=S.stats&&S.stats.total;
     return "Sick of dodging potholes? Help keep riders upright. Log them in one tap and they're sent to whoever's meant to fix them, VicRoads or the council. Plus a live map of every hole riders have found"+(t?", "+t.toLocaleString("en-AU")+" and counting.":".");
@@ -998,6 +1040,7 @@
   };
 
   renderQueue();renderCouncils();renderHistory();renderStats();save();askSent();
+  if(movedIn)setTimeout(()=>toast("Moved to motopotholereporter.au with your reports. Reinstall the app from here so your icon opens the new address.",null,9000),400);
   fetchStats();shareMissing();flushUnshare();
   if(S.queue.some(q=>q.lookup==="failed"||q.lookup==="offline"||needsArea(q)))lookupMissing();
 
