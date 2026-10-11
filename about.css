@@ -60,3 +60,13 @@ body.about{font-size:17px}
   .features{grid-template-columns:repeat(3,1fr)}
   .install,.priv{grid-template-columns:1fr 1fr}
 }
+
+.by-riders{font-size:1.05rem;max-width:62ch;margin:-4px 0 16px}
+.feat.split{grid-column:1/-1;border-left-color:var(--flame);display:grid;gap:16px;align-items:start}
+.feat.split .steps{color:var(--muted);font-size:.95rem;margin:10px 0 8px}
+.feat.split .small{font-size:.85rem}
+.split-pic{width:120px;height:200px;border:3px solid var(--ink);border-radius:16px;overflow:hidden;display:grid;grid-template-rows:3fr 2fr;justify-self:center;background:var(--asphalt)}
+.sp-nav{background:repeating-linear-gradient(35deg,transparent 0 22px,rgba(255,255,255,.08) 22px 24px),linear-gradient(160deg,#3a7bd5,#1d4f91);color:#fff;font-family:var(--head);text-transform:uppercase;font-size:.7rem;letter-spacing:.05em;display:grid;place-items:center;text-align:center;padding:6px;border-bottom:3px solid var(--ink)}
+.sp-app{display:grid;place-items:center;background:var(--bg)}
+.sp-app img{width:56px;height:auto}
+@media (min-width:760px){.feat.split{grid-template-columns:auto 1fr;gap:24px}}
