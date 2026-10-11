@@ -23,16 +23,18 @@ The app is served from Cloudflare (static assets, `wrangler.jsonc` + `site-worke
 - The map (Leaflet + OpenStreetMap tiles) shows potholes from the last 7 days, 30 days, year or all time, coloured by age.
 - Tap a pin to say the pothole is Gone, "Fixed" (a dodgy patch, in quotes), or Still there. One vote per rider (connection) per pothole, changeable. Once gone + "fixed" votes are 3 more than still-there votes, it comes off the map and counts towards the header's "fixed" total. Votes store only a secret-salted hash of IP + pothole id. `CLEAR_AT` in `server/src/worker.js` sets the threshold.
 - The rider who logged a pothole can tap **Fixed** (in "To send") or **Mark fixed** (in "Sent"): it comes off the map straight away but stays in the totals and the "fixed" count.
-- The header shows potholes reported by riders, potholes "fixed", and the top 3 worst-offender councils (most potholes reported on council roads). The phone tells the server the council (core name, validated against the 79) only for council-road potholes.
+- The header shows potholes reported by riders, potholes "fixed", and the top 3 worst-offender councils (most potholes reported on council roads). The phone tells the server the state, whether it's a main road, and the council (`state:core name`, e.g. `vic:melton`, validated against the lists the server knows; Victoria's 79 so far). Each state's main-road total shows under the league.
 - Deleting a report on the phone (meant for mistakes) takes it off the map and out of the counts (the phone keeps a private delete key for each one). Sharing can be turned off in "Your details".
-- API: `GET /api/stats`, `GET /api/potholes?days=30`, `POST /api/potholes {lat,lng}`, `POST /api/potholes/:id/flag {kind: gone|fixed|there}`, `POST /api/potholes/:id/council {council}` and `POST /api/potholes/:id/fixed` (owner only, `X-Delete-Key`), `DELETE /api/potholes/:id` with `X-Delete-Key`. Posts are limited to 120 an hour per IP (salted, daily-rotating hash) and must be inside Australia.
-- Deploy the server: `cd server && npm install && npm run deploy` (needs `wrangler login`). Live at https://api.motopotholereporter.au (and https://pothole-reporter.drivemate-app.workers.dev, kept for phones on older versions)
+- API: `GET /api/stats`, `GET /api/potholes?days=30`, `POST /api/potholes {lat,lng}`, `POST /api/potholes/:id/flag {kind: gone|fixed|there}`, `POST /api/potholes/:id/council {council, state, road, heading}` (older apps send `{council: "melton", vicroads}`, still accepted) and `POST /api/potholes/:id/fixed` (owner only, `X-Delete-Key`), `DELETE /api/potholes/:id` with `X-Delete-Key`. Posts are limited to 120 an hour per IP (salted, daily-rotating hash) and must be inside Australia.
+- Deploy the server: `cd server && npm install && npm run deploy` (needs `wrangler login`; applies migrations first). **Deploy the server before the app** whenever the council/state format changes, or new phones' syncs get refused. Live at https://api.motopotholereporter.au (and https://pothole-reporter.drivemate-app.workers.dev, kept for phones on older versions)
 - A copy of the app opened from `localhost` talks to `wrangler dev` on port 8787 instead, so testing doesn't touch the live map.
 
 ## Council contacts
 
+- Councils and saved emails are keyed `state:core name` (`vic:melton`), road authorities `road:vic`, because council and suburb names repeat across states.
+
 - `councils.js` lists all 79 Victorian councils with the phone, customer-service email (which takes road hazard reports) and website, from the Vic Councils (MAV) council contacts list. Melbourne and Port Phillip take reports only through their websites.
-- The "Council contacts" section lets anyone search the list and change the email for any council, or for VicRoads. Changes are saved on that phone only, with "Use standard" to go back.
+- "Council contacts" opens a list of states and territories. Each shows its road authority (`ROADS` in `app.js`) and councils: Victoria's full list, elsewhere just the councils from your reports until each state's list is added. Anyone can change the email for any council or road authority. Changes are saved on that phone only, with "Use standard" to go back.
 - Council names from OpenStreetMap ("Shire of Moorabool") are matched to the list ("Moorabool Shire Council") on the core name.
 
 ## Privacy and security
@@ -47,6 +49,6 @@ The app is served from Cloudflare (static assets, `wrangler.jsonc` + `site-worke
 ## Notes
 
 - Road names come from OpenStreetMap (Nominatim). Reports are kept on the phone until you mark them as sent.
-- VicRoads reports go to enquiries@roads.vic.gov.au.
+- Main roads go to the state's road authority (`ROADS` in `app.js`): VicRoads (enquiries@roads.vic.gov.au), Main Roads WA and NT Government roads by email; NSW, Queensland, SA, Tasmania and the ACT take reports by phone or website only, so riders add an email or use those. The ACT has no councils, so every ACT road goes to the ACT Government.
 - Each local-road pothole goes to the council for that spot, found from OpenStreetMap council boundaries (Overpass API), with built-in Melton and Moorabool town lists as a fallback. Reports from different councils on one trip get their own email button.
-- Roads with a Victorian M, A, B or C route number go to VicRoads. In Melton, the council's published list of VicRoads-controlled roads is also used.
+- Freeways, highways and roads with a state route number go to the road authority: M/A/B/C in Victoria and Tasmania, M/A/B elsewhere, plus plain numbered routes in WA, Queensland and the NT. Outside Victoria, OpenStreetMap motorway/trunk roads do too. In Melton, the council's published list of VicRoads-controlled roads is also used.

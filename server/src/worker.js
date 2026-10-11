@@ -9,8 +9,12 @@ const POSTS_PER_HOUR = 120;
 // A pothole comes off the map once this many more riders say it's gone (or "fixed") than say it's still there.
 const CLEAR_AT = 3;
 const KINDS = ["gone", "fixed", "there"];
-// Victoria's 79 councils by core name (matches coreName() in the app). Anything else is refused.
-const COUNCILS = new Set(["alpine", "ararat", "ballarat", "banyule", "bass coast", "baw baw", "bayside", "benalla", "boroondara", "brimbank", "buloke", "campaspe", "cardinia", "casey", "central goldfields", "colac otway", "corangamite", "darebin", "east gippsland", "frankston", "gannawarra", "glen eira", "glenelg", "golden plains", "greater bendigo", "greater dandenong", "greater geelong", "greater shepparton", "hepburn", "hindmarsh", "hobsons bay", "horsham", "hume", "indigo", "kingston", "knox", "latrobe", "loddon", "macedon ranges", "manningham", "mansfield", "maribyrnong", "maroondah", "melbourne", "melton", "merri bek", "mildura", "mitchell", "moira", "monash", "moonee valley", "moorabool", "mornington peninsula", "mount alexander", "moyne", "murrindindi", "nillumbik", "northern grampians", "port phillip", "pyrenees", "queenscliffe", "south gippsland", "southern grampians", "stonnington", "strathbogie", "surf coast", "swan hill", "towong", "wangaratta", "warrnambool", "wellington", "west wimmera", "whitehorse", "whittlesea", "wodonga", "wyndham", "yarra", "yarra ranges", "yarriambiack"]);
+// States and territories, as the app names them.
+const STATES = new Set(["vic", "nsw", "qld", "sa", "wa", "tas", "act", "nt"]);
+// Councils by "state:core name" (matches the app's keys). Anything else is refused, so the league only shows real councils.
+// Victoria's 79 so far; add each state's list as the app gets its contacts.
+const VIC_COUNCILS = ["alpine", "ararat", "ballarat", "banyule", "bass coast", "baw baw", "bayside", "benalla", "boroondara", "brimbank", "buloke", "campaspe", "cardinia", "casey", "central goldfields", "colac otway", "corangamite", "darebin", "east gippsland", "frankston", "gannawarra", "glen eira", "glenelg", "golden plains", "greater bendigo", "greater dandenong", "greater geelong", "greater shepparton", "hepburn", "hindmarsh", "hobsons bay", "horsham", "hume", "indigo", "kingston", "knox", "latrobe", "loddon", "macedon ranges", "manningham", "mansfield", "maribyrnong", "maroondah", "melbourne", "melton", "merri bek", "mildura", "mitchell", "moira", "monash", "moonee valley", "moorabool", "mornington peninsula", "mount alexander", "moyne", "murrindindi", "nillumbik", "northern grampians", "port phillip", "pyrenees", "queenscliffe", "south gippsland", "southern grampians", "stonnington", "strathbogie", "surf coast", "swan hill", "towong", "wangaratta", "warrnambool", "wellington", "west wimmera", "whitehorse", "whittlesea", "wodonga", "wyndham", "yarra", "yarra ranges", "yarriambiack"];
+const COUNCILS = new Set(VIC_COUNCILS.map(c => "vic:" + c));
 const MAX_BODY = 512; // bytes; a report is just {"lat":..,"lng":..}
 const MAX_POINTS = 20000;
 
@@ -75,13 +79,25 @@ async function stats(env) {
   const week = new Date(Date.parse(now) - 6 * 86400000).toISOString().slice(0, 10);
   const r = await env.DB.prepare(
     "SELECT COUNT(*) AS total, SUM(CASE WHEN day >= ? THEN 1 ELSE 0 END) AS week, " +
-    "SUM(CASE WHEN cleared_day IS NOT NULL THEN 1 ELSE 0 END) AS fixed, SUM(vicroads) AS vicroads FROM potholes"
+    "SUM(CASE WHEN cleared_day IS NOT NULL THEN 1 ELSE 0 END) AS fixed FROM potholes"
   ).bind(week).first();
-  // Worst offenders: councils with the most potholes reported in their area, VicRoads roads included.
-  const { results: worst } = await env.DB.prepare(
+  // Main-road potholes per state, for each road authority's total.
+  const { results: rs } = await env.DB.prepare(
+    "SELECT state, COUNT(*) AS n FROM potholes WHERE main_road = 1 AND state IS NOT NULL GROUP BY state"
+  ).all();
+  const roads = Object.fromEntries(rs.map(x => [x.state, x.n]));
+  // Worst offenders: councils with the most potholes reported in their area, main roads included.
+  const { results: league } = await env.DB.prepare(
     "SELECT council, COUNT(*) AS n FROM potholes WHERE council IS NOT NULL GROUP BY council ORDER BY n DESC, council LIMIT 3"
   ).all();
-  return { total: r.total || 0, week: r.week || 0, fixed: r.fixed || 0, vicroads: r.vicroads || 0, worst: worst.map(w => [w.council, w.n]) };
+  // Apps from before the national update read "worst" (Victorian core names) and "vicroads".
+  const { results: worst } = await env.DB.prepare(
+    "SELECT substr(council, 5) AS council, COUNT(*) AS n FROM potholes WHERE council LIKE 'vic:%' GROUP BY council ORDER BY n DESC, council LIMIT 3"
+  ).all();
+  return {
+    total: r.total || 0, week: r.week || 0, fixed: r.fixed || 0, roads, league: league.map(w => [w.council, w.n]),
+    vicroads: roads.vic || 0, worst: worst.map(w => [w.council, w.n]),
+  };
 }
 
 // The phone that logged a pothole proves it with its key; the server only has the key's hash.
@@ -167,23 +183,34 @@ export default {
       return json(req, { cleared, clearAt: CLEAR_AT, votes: v, ...(await stats(env)) });
     }
 
-    // Owner-only: set the council area, whether it's a VicRoads road and the direction of travel, or mark it fixed straight away.
+    // Owner-only: set the state and council area, whether it's a main road and the direction of travel, or mark it fixed straight away.
     const o = url.pathname.match(/^\/api\/potholes\/([A-Za-z0-9_-]{6,32})\/(council|fixed)$/);
     if (o && req.method === "POST") {
       const raw = await req.text();
       if (raw.length > MAX_BODY) return json(req, { error: "too large" }, 413);
       if (!(await ownerOk(req, env, o[1]))) return json(req, { error: "not yours" }, 403);
       if (o[2] === "council") {
-        let council, vicroads, heading;
-        try { ({ council, vicroads = false, heading } = JSON.parse(raw)); } catch { return json(req, { error: "bad json" }, 400); }
+        let b;
+        try { b = JSON.parse(raw); } catch { return json(req, { error: "bad json" }, 400); }
+        if (!b || typeof b !== "object") return json(req, { error: "bad json" }, 400);
+        // New apps send {council: "vic:melton", state: "vic", road}. Older ones send {council: "melton", vicroads},
+        // and were only ever used in Victoria.
+        const legacy = !("state" in b) && !("road" in b);
+        let { council = "", state = "", heading } = b;
+        const road = legacy ? (b.vicroads ?? false) : (b.road ?? false);
+        if (typeof council !== "string" || typeof state !== "string") return json(req, { error: "bad json" }, 400);
+        if (typeof road !== "boolean") return json(req, { error: legacy ? "vicroads must be true or false" : "road must be true or false" }, 400);
+        if (legacy && council && !council.includes(":")) council = "vic:" + council;
         if (council !== "" && !COUNCILS.has(council)) return json(req, { error: "unknown council" }, 400);
-        if (typeof vicroads !== "boolean") return json(req, { error: "vicroads must be true or false" }, 400);
+        if (legacy) state = council ? council.slice(0, council.indexOf(":")) : road ? "vic" : "";
+        if (state !== "" && !STATES.has(state)) return json(req, { error: "unknown state" }, 400);
+        if (council && council.slice(0, council.indexOf(":")) !== state) return json(req, { error: "council is in another state" }, 400);
         const hd = headingOf(heading);
         if (!hd.ok) return json(req, { error: "heading must be 0 to 359 degrees" }, 400);
         // Older apps don't send a heading, so leave any saved one alone rather than wiping it.
-        await env.DB.prepare("UPDATE potholes SET council = ?, vicroads = ?, heading = COALESCE(?, heading) WHERE id = ?")
-          .bind(council || null, vicroads ? 1 : 0, hd.h, o[1]).run();
-        return json(req, { council, vicroads, ...(await stats(env)) });
+        await env.DB.prepare("UPDATE potholes SET council = ?, state = ?, main_road = ?, heading = COALESCE(?, heading) WHERE id = ?")
+          .bind(council || null, state || null, road ? 1 : 0, hd.h, o[1]).run();
+        return json(req, { council, state, road, ...(await stats(env)) });
       }
       await env.DB.prepare("UPDATE potholes SET cleared_day = ? WHERE id = ? AND cleared_day IS NULL").bind(today(), o[1]).run();
       return json(req, { cleared: true, ...(await stats(env)) });

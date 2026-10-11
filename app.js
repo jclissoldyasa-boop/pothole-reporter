@@ -52,7 +52,7 @@
         S.suburbCouncil={...obj(v.suburbCouncil),...S.suburbCouncil};
         const us=new Set(S.unshare.map(u=>u.id+"|"+u.op));
         S.unshare=[...S.unshare,...arr(v.unshare).filter(u=>u&&u.id&&!us.has(u.id+"|"+u.op))];
-        S.meReset=true;save();movedIn=true;
+        S.meReset=true;S.keysV2=false;S.classV2=false;save();movedIn=true;
       }
     }catch(e){}
     history.replaceState(null,"",location.pathname+location.search);
@@ -63,15 +63,52 @@
   // Every Victorian council (councils.js). OpenStreetMap says "Shire of Moorabool", the council says
   // "Moorabool Shire Council", so both are matched on the core name ("moorabool").
   function coreName(n){return(n||"").toLowerCase().replace(/[-']/g," ").replace(/\b(city|shire|rural|borough|council|of|the)\b/g," ").replace(/\s+/g," ").trim()}
-  const VIC={};(window.VIC_COUNCILS||[]).forEach(([name,phone,email,web])=>{VIC[coreName(name)]={name,phone,email,web}});
-  const councilInfo=c=>VIC[coreName(c)]||null;
-  const councilName=c=>{const i=councilInfo(c);return i?i.name:c};
-  const shortCouncil=c=>councilName(c).replace(/ (Rural City|City|Shire|Borough) Council$/,"");
-  // Your own email for a council (or VicRoads, key "vicroads") wins over the built-in one.
-  const councilEmail=c=>(S.councils[coreName(c)]||(councilInfo(c)||{}).email||"").trim();
-  const vicroadsEmail=()=>(S.councils.vicroads||TO).trim();
-  // Saved emails used to be keyed by OpenStreetMap's name.
-  {const old=S.councils;S.councils={};Object.keys(old).forEach(k=>{if(old[k])S.councils[k==="vicroads"?k:coreName(k)]=old[k]})}
+  // ---------- states, road authorities and councils ----------
+  // Main roads in each state go to its road authority. An empty email means it only takes reports by phone or on its website.
+  // Sources: each authority's own "report a road hazard" page, October 2026.
+  const ROADS={
+    vic:{short:"VicRoads",name:"VicRoads (main roads and freeways)",phone:"13 11 70",email:TO,web:"www.vicroads.vic.gov.au"},
+    nsw:{short:"Transport for NSW",name:"Transport for NSW (state roads)",phone:"131 700",email:"",web:"www.transport.nsw.gov.au/contact-us"},
+    qld:{short:"Transport and Main Roads",name:"Transport and Main Roads (state-controlled roads)",phone:"13 19 40",email:"",web:"www.tmr.qld.gov.au/Contact-us"},
+    sa:{short:"DIT",name:"Department for Infrastructure and Transport (state roads)",phone:"1800 018 313",email:"",web:"dit.sa.gov.au/contact-us"},
+    wa:{short:"Main Roads WA",name:"Main Roads WA (state roads)",phone:"138 138",email:"enquiries@mainroads.wa.gov.au",web:"www.mainroads.wa.gov.au/contact-us/"},
+    tas:{short:"State Growth",name:"Department of State Growth (state roads)",phone:"1300 139 933",email:"",web:"www.transport.tas.gov.au/managing_the_roads/contact_us/report_a_road_hazard_or_issue"},
+    act:{short:"ACT Government",name:"ACT Government, Fix My Street (all roads)",phone:"13 22 81",email:"",web:"www.act.gov.au/fixmystreet"},
+    nt:{short:"NT Government",name:"NT Government roads (territory roads)",phone:"1800 246 199",email:"roadreporting.ntg@nt.gov.au",web:"nt.gov.au/driving/safety/report-a-road-fault"}};
+  const STATE_NAMES={vic:"Victoria",nsw:"New South Wales",qld:"Queensland",sa:"South Australia",wa:"Western Australia",tas:"Tasmania",act:"Australian Capital Territory",nt:"Northern Territory"};
+  // Nominatim gives "Victoria" and "AU-VIC"; OpenStreetMap boundaries give "AU-VIC".
+  function stateCode(s){
+    s=(s||"").trim().toLowerCase();if(!s)return "";
+    if(s.startsWith("au-")&&ROADS[s.slice(3)])return s.slice(3);
+    return Object.keys(STATE_NAMES).find(k=>STATE_NAMES[k].toLowerCase()===s)||"";
+  }
+  // Every council we have contacts for, keyed "state:core name" (e.g. "vic:melton"), because names repeat
+  // across states (Campbelltown is in NSW and SA). Victoria's come from councils.js; more states to come.
+  const COUNCIL_LISTS={vic:window.VIC_COUNCILS||[]};
+  const CINFO={};Object.entries(COUNCIL_LISTS).forEach(([st,l])=>l.forEach(([name,phone,email,web])=>{CINFO[st+":"+coreName(name)]={name,phone,email,web}}));
+  const keyState=k=>k.startsWith("road:")?k.slice(5):k.slice(0,k.indexOf(":"));
+  const keyCore=k=>k.slice(k.indexOf(":")+1);
+  const titleCase=t=>t.replace(/\b\w/g,x=>x.toUpperCase());
+  // Which state a report is in: from the lookup, or (older reports) from a Victorian council name.
+  function stateOf(q){return q.st||stateCode(q.state)||(q.council&&CINFO["vic:"+coreName(q.council)]?"vic":"")}
+  const ckeyOf=q=>q.council?(stateOf(q)||"?")+":"+coreName(q.council):"";
+  const councilInfo=k=>CINFO[k]||null;
+  const councilName=(k,raw)=>CINFO[k]?CINFO[k].name:(raw||titleCase(keyCore(k)));
+  const shortCouncil=(k,raw)=>councilName(k,raw).replace(/ (Rural City|City|Shire|Borough|Regional|Municipal) Council$/,"");
+  // Your own email for a council (or a road authority, key "road:vic") wins over the built-in one.
+  const councilEmail=k=>(S.councils[k]||(CINFO[k]||{}).email||"").trim();
+  const roadEmail=st=>(S.councils["road:"+st]||(ROADS[st]||{}).email||"").trim();
+  const roadName=st=>ROADS[st]?ROADS[st].short:"Main roads";
+  // Older versions keyed saved emails by bare council name ("melton", "vicroads") and suburbs by name alone,
+  // and called main-road reports "vicroads". Everything back then was Victorian.
+  if(!S.keysV2){
+    const old=S.councils;S.councils={};
+    Object.keys(old).forEach(k=>{if(old[k])S.councils[k==="vicroads"?"road:vic":k.includes(":")?k:"vic:"+coreName(k)]=old[k]});
+    const sc=S.suburbCouncil;S.suburbCouncil={};
+    Object.keys(sc).forEach(k=>{S.suburbCouncil[k.includes("|")?k:"vic|"+k]=sc[k]});
+    [...S.queue,...S.history.flatMap(h=>h.items||[])].forEach(q=>{if(q&&q.auth==="vicroads")q.auth="road"});
+    S.keysV2=true;save();
+  }
 
   // ---------- who manages the road ----------
   // Source: Melton City Council "Arterial Roads" page — roads in the City of Melton controlled by VicRoads.
@@ -81,36 +118,47 @@
   // Towns in the Shire of Moorabool, used when the council boundary lookup can't be reached.
   const MOORABOOL_SUBURBS=["bacchus marsh","maddingley","darley","ballan","myrniong","gordon","coimadai","merrimu","long forest","hopetoun park","greendale","blackwood","mount egerton","wallace","bungaree","dunnstown","millbrook","rowsley","balliang"];
   function norm(r){return(r||"").toLowerCase().replace(/[-–—'.]/g," ").replace(/\brd\b/g,"road").replace(/\bst\b/g,"street").replace(/\bhwy\b/g,"highway").replace(/\bfwy\b/g,"freeway").replace(/\bdr\b/g,"drive").replace(/\s+/g," ").trim()}
-  // Victorian M, A, B and C route numbers are arterial roads, which VicRoads looks after.
-  const arterialRef=ref=>((ref||"").split(/[;,]/).map(x=>x.trim().toUpperCase()).find(x=>/^[MABC]\d+$/.test(x))||"");
+  // Route numbers that mark a state road. Victoria and Tasmania letter theirs M, A, B and C, the rest of the
+  // east M, A and B. WA, Queensland and the NT also use plain numbered state routes.
+  const REF_RE={vic:/^[MABC]\d+$/,tas:/^[MABC]\d+$/,nsw:/^[MAB]\d+$/,sa:/^[MAB]\d+$/,act:/^[MAB]\d+$/,qld:/^([MAB]\d+|\d+)$/,wa:/^([MAB]\d+|\d+)$/,nt:/^([MAB]\d+|\d+)$/};
+  const arterialRef=(ref,st)=>{const re=REF_RE[st]||REF_RE.vic;return(ref||"").split(/[;,]/).map(x=>x.trim().toUpperCase()).find(x=>re.test(x))||""};
   function guessCouncil(q){
     if(q.council)return q.council;
     const sub=norm(q.place);if(!sub)return "";
-    if(S.suburbCouncil[sub])return S.suburbCouncil[sub];
+    const st=stateOf(q);
+    if(st&&S.suburbCouncil[st+"|"+sub])return S.suburbCouncil[st+"|"+sub];
+    // The town lists are Victorian. Suburb names repeat across states (there's a Melton in SA too).
+    if(st&&st!=="vic")return "";
     return MELTON_SUBURBS.includes(sub)?MELTON:MOORABOOL_SUBURBS.includes(sub)?"Shire of Moorabool":"";
   }
   function classify(q){
-    const r=norm(q.road),council=guessCouncil(q),ref=arterialRef(q.ref);
+    const st=stateOf(q),council=guessCouncil(q),r=norm(q.road),ref=arterialRef(q.ref,st),rn=roadName(st);
     if(!r)return{auth:"check",why:"Road name not found yet"};
-    if(q.state&&q.state!=="Victoria")return{auth:"check",why:"Outside Victoria. Check who manages this road, then pick one"};
+    if(!st)return{auth:"check",why:q.state?"Outside the states and territories we know. Check who manages this road":"Couldn't tell which state this is yet"};
+    // Canberra has no councils: the ACT Government looks after every road.
+    if(st==="act")return{auth:"road",why:"The ACT Government looks after every road in the ACT"};
     if(/service road/.test(r))return council?{auth:"council",why:"Service roads beside main roads are council's"}:{auth:"check",why:"Service road, but the council wasn't found. Add it under Details"};
-    if(/\b(freeway|highway)\b/.test(r))return{auth:"vicroads",why:"Freeways and highways are VicRoads"};
-    if(ref)return{auth:"vicroads",why:"Route "+ref+" is a VicRoads arterial road"};
-    if(coreName(council)==="melton"){
-      if(VR_FULL.includes(r))return{auth:"vicroads",why:"On Melton's list of VicRoads roads"};
+    if(/\b(freeway|highway|motorway)\b/.test(r))return{auth:"road",why:"Freeways and highways are "+rn};
+    if(ref)return{auth:"road",why:"Route "+ref+" is a "+rn+" road"};
+    // Outside Victoria, OpenStreetMap's motorway and trunk roads are almost always state roads.
+    if(st!=="vic"&&(q.hw==="motorway"||q.hw==="trunk"))return{auth:"road",why:"Major road, most likely "+rn+"'s"};
+    if(st==="vic"&&coreName(council)==="melton"){
+      if(VR_FULL.includes(r))return{auth:"road",why:"On Melton's list of VicRoads roads"};
       if(VR_PART[r])return{auth:"check",why:VR_PART[r]+". Check the map, then pick one"};
     }
-    if(council)return{auth:"council",why:"Local road, "+councilName(council)};
-    return{auth:"check",why:"Couldn't tell which council this is. Pick VicRoads, or add the council under Details"};
+    if(council)return{auth:"council",why:"Local road, "+councilName(st+":"+coreName(council),council)};
+    return{auth:"check",why:"Couldn't tell which council this is. Pick "+rn+", or add the council under Details"};
   }
   function applyClass(q){if(!q.council){const c=guessCouncil(q);if(c)q.council=c}if(q.authSet)return;const c=classify(q);q.auth=c.auth;q.why=c.why}
+  // Reports logged outside Victoria before the national update were left as "check". Sort them now.
+  if(!S.classV2){S.queue.forEach(q=>{if(q.auth==="check"&&!q.authSet&&q.lookup==="done")applyClass(q)});S.classV2=true;save()}
 
   // ---------- road lookup (OpenStreetMap Nominatim, max 1 request a second) ----------
   let lastLookup=0;
   const wait=ms=>new Promise(r=>setTimeout(r,ms));
   // Council boundary and nearby roads' route numbers (OpenStreetMap via Overpass).
   async function areaLookup(q){
-    const ql="[out:json][timeout:10];is_in("+q.lat+","+q.lng+")->.a;rel(pivot.a)[boundary=administrative][admin_level=6];out tags;way(around:30,"+q.lat+","+q.lng+")[highway][name];out tags;";
+    const ql="[out:json][timeout:10];is_in("+q.lat+","+q.lng+")->.a;rel(pivot.a)[boundary=administrative][admin_level~\"^(4|6)$\"];out tags;way(around:30,"+q.lat+","+q.lng+")[highway][name];out tags;";
     // The public server is often busy for a moment, so try twice.
     for(let tries=0;tries<2;tries++){
       if(tries)await wait(1500);
@@ -119,8 +167,9 @@
         const r=await fetch("https://overpass-api.de/api/interpreter",{method:"POST",body:"data="+encodeURIComponent(ql),headers:{"Content-Type":"application/x-www-form-urlencoded"},signal:ctl.signal});
         if(!r.ok)throw new Error("http "+r.status);
         const els=(await r.json()).elements||[];
-        const area=els.find(e=>e.type==="relation"&&e.tags&&e.tags.name);
-        return{council:area?area.tags.name:"",ways:els.filter(e=>e.type==="way"&&e.tags).map(e=>e.tags)};
+        const rels=els.filter(e=>e.type==="relation"&&e.tags);
+        const area=rels.find(e=>e.tags.admin_level==="6"&&e.tags.name),state=rels.find(e=>e.tags.admin_level==="4");
+        return{council:area?area.tags.name:"",st:state?stateCode(state.tags["ISO3166-2"])||stateCode(state.tags.name):"",ways:els.filter(e=>e.type==="way"&&e.tags).map(e=>e.tags)};
       }catch(e){}finally{clearTimeout(t)}
     }
     return null;
@@ -130,10 +179,14 @@
   function useArea(q,area){
     if(!area){q.areaTries=(q.areaTries||0)+1;return}
     q.areaDone=true;
-    if(area.council&&!q.councilSet){q.council=area.council;const sub=norm(q.place);if(sub)S.suburbCouncil[sub]=area.council}
+    if(area.st)q.st=area.st;
+    const st=stateOf(q);
+    if(area.council&&!q.councilSet){q.council=area.council;const sub=norm(q.place);if(sub&&st)S.suburbCouncil[st+"|"+sub]=area.council}
     const r=norm(q.road);
-    const withRef=area.ways.find(w=>w.highway!=="service"&&r&&norm(w.name)===r&&arterialRef(w.ref));
+    const named=area.ways.filter(w=>w.highway!=="service"&&r&&norm(w.name)===r);
+    const withRef=named.find(w=>arterialRef(w.ref,st));
     q.ref=withRef?withRef.ref:"";
+    q.hw=(named[0]||{}).highway||"";
   }
   async function lookup(q){
     if(!navigator.onLine){q.lookup="offline";applyClass(q);return false}
@@ -147,6 +200,7 @@
       const d=await r.json();const a=d.address||{};
       const road=a.road||a.pedestrian||a.residential||"";
       q.state=a.state||"";
+      const sc=stateCode(a["ISO3166-2-lvl4"])||stateCode(a.state);if(sc)q.st=sc;
       q.place=a.suburb||a.town||a.village||a.hamlet||"";
       q.suburb=q.place||a.city_district||a.city||"";
       q.postcode=a.postcode||"";
@@ -270,7 +324,7 @@
     lookup(item).then(()=>{
       save();renderQueue();renderCouncils();
       const label=(item.road||"Pothole")+(item.suburb?", "+item.suburb:"");
-      const who=item.auth==="vicroads"?"VicRoads":item.auth==="council"?(item.council||"council"):"needs a check";
+      const who=item.auth==="road"?roadName(stateOf(item)):item.auth==="council"?(item.council||"council"):"needs a check";
       if(item.lookup==="offline")setStatus("Logged. No signal, so the road will be looked up when you're back online.","good");
       else setStatus("Logged: "+label+" ("+who+").",item.auth==="check"?"err":"good");
     });
@@ -301,24 +355,31 @@
     return{subject,body};
   }
   let pending=null;
-  const forCouncil=c=>S.queue.filter(q=>q.auth==="council"&&coreName(q.council)===coreName(c));
-  // One entry per council, however its name was spelt on each report.
-  const councilsInQueue=()=>{const m=new Map();S.queue.filter(q=>q.auth==="council").forEach(q=>{const k=coreName(q.council);if(!m.has(k))m.set(k,q.council||"")});return[...m.values()]};
+  const forCouncil=k=>S.queue.filter(q=>q.auth==="council"&&ckeyOf(q)===k);
+  const forRoad=st=>S.queue.filter(q=>q.auth==="road"&&stateOf(q)===st);
+  // One entry per council ("state:core name"), however its name was spelt on each report. Value is a name to show.
+  const councilsInQueue=()=>{const m=new Map();S.queue.filter(q=>q.auth==="council").forEach(q=>{const k=ckeyOf(q);if(!m.has(k))m.set(k,q.council||"")});return m};
+  const roadStatesInQueue=()=>[...new Set(S.queue.filter(q=>q.auth==="road").map(stateOf))];
   // Riders often send the email and never come back to tap "mark as sent". So each pothole remembers the email
   // it went into (q.emailed), the app asks about it next time, and leaves it out of the next email unless asked.
   const dayName=at=>{const d=new Date(at),t=new Date();return d.toDateString()===t.toDateString()?"today":new Date(t-864e5).toDateString()===d.toDateString()?"yesterday":d.toLocaleDateString("en-AU",{weekday:"short",day:"numeric",month:"short"})};
   const emailGroups=()=>{const m=new Map();S.queue.forEach(q=>{if(!q.emailed)return;const g=m.get(q.emailed.at)||{at:q.emailed.at,label:q.emailed.to,subject:q.emailed.subject,ids:[]};g.ids.push(q.id);m.set(g.at,g)});return[...m.values()].sort((a,b)=>a.at.localeCompare(b.at))};
-  function emailTargets(who,council){
-    const items=who==="council"?forCouncil(council):S.queue.filter(q=>q.auth===who);
+  // who is "council" (key "vic:melton") or "road" (key "vic").
+  function emailTargets(who,key){
+    const items=who==="council"?forCouncil(key):forRoad(key);
     if(!items.length)return null;
-    if(who==="council"&&!council){msg("Open Details on those reports and fill in Council.","err");return null}
-    const to=who==="council"?councilEmail(council):vicroadsEmail();
+    if(who==="council"&&!key){msg("Open Details on those reports and fill in Council.","err");return null}
+    if(who==="road"&&!key){msg("Couldn't tell which state those main-road reports are in. Tap Retry lookups when you have signal.","err");return null}
+    const raw=who==="council"?(items.find(q=>q.council)||{}).council:"";
+    const name=who==="council"?councilName(key,raw):roadName(key);
+    const to=who==="council"?councilEmail(key):roadEmail(key);
     if(!to){
-      focusCouncil(council);
-      msg(councilInfo(council)?councilName(council)+" takes reports on its website, not by email. Use their website, or add an email under Council contacts.":"Add an email for "+council+" under Council contacts first.","err");
+      focusCouncil(who==="council"?key:"road:"+key);
+      const known=who==="council"?councilInfo(key):ROADS[key];
+      msg(known&&known.web?name+" takes reports on its website or by phone, not by email. Use those, or add an email under Council contacts.":"Add an email for "+name+" under Council contacts first.","err");
       return null;
     }
-    return{items,to,label:who==="council"?councilName(council):"VicRoads"};
+    return{items,to,label:name};
   }
   function openEmail(who,council){
     const t=emailTargets(who,council);if(!t)return;
@@ -362,7 +423,6 @@
     pending=null;renderQueue();renderHistory();askSent();
     $("fbNudge").hidden=false;
   }
-  $("sendBtn").onclick=()=>openEmail("vicroads");
   $("confirmYes").onclick=()=>{if(pending)markSent(pending.ids,pending.label,pending.subject)};
   // Didn't send: they go back to being ordinary reports, included in the next email.
   $("confirmNo").onclick=()=>{
@@ -401,7 +461,7 @@
     });
     return w;
   }
-  const authLabel=q=>q.auth==="vicroads"?"VicRoads":q.auth==="council"?(q.council?shortCouncil(q.council):"Council"):"Check";
+  const authLabel=q=>q.auth==="road"?roadName(stateOf(q)):q.auth==="council"?(q.council?shortCouncil(ckeyOf(q),q.council):"Council"):"Check";
   function renderQueue(openId){
     const ol=$("queue");ol.innerHTML="";
     if(!S.queue.length){const li=document.createElement("li");li.innerHTML='<p class="empty">Nothing waiting. Tap the sign when you pass a pothole.</p>';ol.appendChild(li)}
@@ -444,7 +504,8 @@
       ed.onclick=()=>{box.hidden=!box.hidden;ed.setAttribute("aria-expanded",!box.hidden)};
       const l0=document.createElement("label");l0.textContent="Send to";
       const aw=document.createElement("div");aw.className="chips";
-      [["vicroads","VicRoads"],["council","Council"]].forEach(([v,l])=>{
+      const qst=stateOf(q);
+      [["road",roadName(qst)],["council","Council"]].filter(([v])=>!(v==="council"&&qst==="act")).forEach(([v,l])=>{
         const b=document.createElement("button");b.type="button";b.className="chip";b.textContent=l;b.setAttribute("aria-pressed",q.auth===v);
         b.onclick=()=>{q.auth=v;q.authSet=true;q.why="You chose this";save();renderQueue(q.id)};aw.appendChild(b);
       });
@@ -468,88 +529,99 @@
   // "Email 3", or "Email 3 new" when others on the list were already emailed, or "Email 4 again".
   const emailLabel=its=>{const f=its.filter(q=>!q.emailed).length;return f===its.length?"Email "+f:f?"Email "+f+" new":"Email "+its.length+" again"};
   function updateButtons(){
-    const vr=S.queue.filter(q=>q.auth==="vicroads"),co=S.queue.filter(q=>q.auth==="council"),ck=S.queue.filter(q=>q.auth==="check");
+    const vr=S.queue.filter(q=>q.auth==="road"),ck=S.queue.filter(q=>q.auth==="check");
     $("qCount").textContent=S.queue.length?S.queue.length+" logged"+(ck.length?", "+ck.length+" to check":""):"";
-    $("sendBtn").disabled=!vr.length;
-    $("sendBtn").textContent=vr.length?emailLabel(vr)+" to VicRoads":"Nothing for VicRoads yet";
+    // Main roads: one button per state's road authority. The grey placeholder shows when there are none.
+    $("sendBtn").hidden=!!vr.length;
+    const rb=$("roadBtns");rb.innerHTML="";
+    roadStatesInQueue().forEach(st=>{
+      const its=forRoad(st),b=document.createElement("button");b.type="button";b.className="btn primary";
+      b.textContent=!st?its.length+" main-road "+(its.length===1?"report needs":"reports need")+" a state":emailLabel(its)+" to "+roadName(st)+(roadEmail(st)?"":ROADS[st]?" (website only)":" (add email first)");
+      b.onclick=()=>openEmail("road",st);rb.appendChild(b);
+    });
     const box=$("councilBtns");box.innerHTML="";
-    councilsInQueue().forEach(c=>{
-      const its=forCouncil(c),n=its.length,b=document.createElement("button");b.type="button";b.className="btn";
-      b.textContent=!c?n+" council "+(n===1?"report needs":"reports need")+" a council name":emailLabel(its)+" to "+councilName(c)+(councilEmail(c)?"":councilInfo(c)?" (website only)":" (add email first)");
-      b.onclick=()=>openEmail("council",c);box.appendChild(b);
+    councilsInQueue().forEach((raw,k)=>{
+      const its=forCouncil(k),n=its.length,b=document.createElement("button");b.type="button";b.className="btn";
+      b.textContent=!k?n+" council "+(n===1?"report needs":"reports need")+" a council name":emailLabel(its)+" to "+councilName(k,raw)+(councilEmail(k)?"":councilInfo(k)&&councilInfo(k).web?" (website only)":" (add email first)");
+      b.onclick=()=>openEmail("council",k);box.appendChild(b);
     });
     syncCouncils();
     $("clearBtn").hidden=$("swipeHint").hidden=!S.queue.length;if(!S.queue.length)$("clearConfirm").hidden=true;
     $("lookupBtn").hidden=!S.queue.some(q=>q.lookup==="failed"||q.lookup==="offline"||(q.lookup==="done"&&needsArea(q)));
   }
   // ---------- council contacts ----------
+  // Pick a state, then see its road authority and councils. Keys are "road:vic" and "vic:melton".
   let editing=null,openState=null;
-  // Only Victoria has council contacts so far; the rest show as coming soon.
-  const STATES=[
-    {k:"vic",name:"Victoria",source:"Council details from the Vic Councils (Municipal Association of Victoria) contacts list."},
-    {k:"nsw",name:"New South Wales"},{k:"qld",name:"Queensland"},{k:"sa",name:"South Australia"},{k:"wa",name:"Western Australia"},
-    {k:"tas",name:"Tasmania"},{k:"act",name:"Australian Capital Territory"},{k:"nt",name:"Northern Territory"}];
+  const STATE_ORDER=["vic","nsw","qld","sa","wa","tas","act","nt"];
+  const SOURCES={vic:"Council details from the Vic Councils (Municipal Association of Victoria) contacts list."};
+  // Councils in a state: the ones we have contacts for, plus any met on the road or given an email. Key → name.
+  function councilsIn(st){
+    const all=new Map(Object.entries(CINFO).filter(([k])=>keyState(k)===st).map(([k,i])=>[k,i.name]));
+    S.queue.forEach(q=>{const k=ckeyOf(q);if(k&&keyState(k)===st&&!all.has(k))all.set(k,q.council)});
+    Object.keys(S.councils).forEach(k=>{if(!k.startsWith("road:")&&keyState(k)===st&&!all.has(k))all.set(k,titleCase(keyCore(k)))});
+    return all;
+  }
   function renderStates(){
     const ul=$("stateList");ul.innerHTML="";
-    const inQ=new Set(S.queue.filter(q=>q.council).map(q=>coreName(q.council)));
-    STATES.forEach(st=>{
+    const inQ=new Set(S.queue.map(q=>q.auth==="road"?"road:"+stateOf(q):ckeyOf(q)).filter(Boolean));
+    STATE_ORDER.forEach(st=>{
       const li=document.createElement("li");
       const b=document.createElement("button");b.type="button";b.className="state";
-      const nm=document.createElement("strong");nm.textContent=st.name;
+      const nm=document.createElement("strong");nm.textContent=STATE_NAMES[st];
       const sub=document.createElement("span");sub.className="sub";
-      if(st.k==="vic"){
-        const n=Object.keys(VIC).length,on=[...inQ].filter(k=>VIC[k]).length;
-        sub.textContent=n+" councils + VicRoads";
-        if(on){const t=document.createElement("span");t.className="tag";t.textContent=on+" on your list";nm.append(" ",t)}
-        b.onclick=()=>{openState="vic";$("councilSearch").value="";editing=null;renderCouncils();$("stateBack").focus()};
-      }else{sub.textContent="Coming soon";b.disabled=true}
+      const n=Object.keys(CINFO).filter(k=>keyState(k)===st).length;
+      sub.textContent=st==="act"?"All roads: ACT Government":n?n+" councils + "+ROADS[st].short:ROADS[st].short+". Councils coming soon";
+      const on=[...inQ].filter(k=>keyState(k)===st).length;
+      if(on){const t=document.createElement("span");t.className="tag";t.textContent=on+" on your list";nm.append(" ",t)}
+      b.onclick=()=>{openState=st;$("councilSearch").value="";editing=null;renderCouncils();$("stateBack").focus()};
       b.append(nm,sub);li.append(b);ul.append(li);
     });
   }
   $("stateBack").addEventListener("click",()=>{openState=null;editing=null;renderCouncils();$("stateList").querySelector("button").focus()});
   function renderCouncils(){
-    const st=STATES.find(x=>x.k===openState);
+    const st=STATE_NAMES[openState]?openState:null;
     $("stateList").hidden=!!st;$("stateView").hidden=!st;
     if(!st){renderStates();return}
-    $("stateTitle").textContent=st.name;$("councilSource").textContent=st.source||"";
+    $("stateTitle").textContent=STATE_NAMES[st];
+    const hasList=Object.keys(CINFO).some(k=>keyState(k)===st);
+    $("councilSource").textContent=SOURCES[st]||(st==="act"?"The ACT has no councils. The ACT Government looks after every road.":"The full council list for "+STATE_NAMES[st]+" is coming soon. Councils from your reports show here, and you can add their email.");
+    $("councilSearch").hidden=!hasList;
     const list=$("councilList");list.innerHTML="";
     const term=$("councilSearch").value.trim().toLowerCase();
-    const inQ=new Set(S.queue.filter(q=>q.council).map(q=>coreName(q.council)));
-    // Every Victorian council, plus any others met on the road or given an email.
-    const all=new Map(Object.entries(VIC).map(([k,i])=>[k,i.name]));
-    S.queue.forEach(q=>{const k=coreName(q.council);if(k&&!all.has(k))all.set(k,q.council)});
-    Object.keys(S.councils).forEach(k=>{if(k!=="vicroads"&&!all.has(k))all.set(k,k.replace(/\b\w/g,x=>x.toUpperCase()))});
+    const inQ=new Set(S.queue.filter(q=>q.auth==="council").map(ckeyOf));
+    const all=st==="act"?new Map():councilsIn(st);
     let keys=[...all.keys()].sort((a,b)=>(inQ.has(b)-inQ.has(a))||all.get(a).localeCompare(all.get(b)));
-    keys.unshift("vicroads");
-    if(term)keys=keys.filter(k=>(k==="vicroads"?"vicroads main roads freeways":all.get(k)).toLowerCase().includes(term));
+    const rk="road:"+st;keys.unshift(rk);
+    if(term)keys=keys.filter(k=>(k===rk?ROADS[st].name+" "+ROADS[st].short+" main roads freeways":all.get(k)).toLowerCase().includes(term));
     keys.forEach(k=>{
-      const vr=k==="vicroads",info=vr?{name:"VicRoads (main roads and freeways)",phone:"13 11 70",email:TO,web:"www.vicroads.vic.gov.au"}:VIC[k]||{name:all.get(k)};
-      const mine=S.councils[k],email=vr?vicroadsEmail():(mine||info.email||"");
+      const vr=k===rk,info=vr?ROADS[st]:CINFO[k]||{name:all.get(k)};
+      const mine=S.councils[k],email=vr?roadEmail(st):(mine||info.email||"");
       const li=document.createElement("li");li.dataset.key=k;
       const top=document.createElement("div");top.className="crow";
       const nm=document.createElement("strong");nm.textContent=info.name;
-      if(inQ.has(k)){const t=document.createElement("span");t.className="tag";t.textContent="On your list";nm.append(" ",t)}
-      const ch=document.createElement("button");ch.type="button";ch.className="mini";ch.textContent=editing===k?"Close":"Change email";
+      if(inQ.has(k)||(vr&&forRoad(st).length)){const t=document.createElement("span");t.className="tag";t.textContent="On your list";nm.append(" ",t)}
+      const ch=document.createElement("button");ch.type="button";ch.className="mini";ch.textContent=editing===k?"Close":email?"Change email":"Add email";
       ch.onclick=()=>{editing=editing===k?null:k;renderCouncils();if(editing===k){const el=list.querySelector('li[data-key="'+CSS.escape(k)+'"] input');if(el)el.focus()}};
       top.append(nm,ch);
       const em=document.createElement("div");em.className="cemail";
       if(email){em.textContent=email;if(mine){const t=document.createElement("span");t.className="tag mine";t.textContent="Your email";em.append(" ",t)}}
-      else{em.textContent=info.web?"No email. Reports go through their website.":"No email yet. Add one to send reports here.";em.classList.add("none")}
+      else{em.textContent=info.web?"No email. Reports go through their website or by phone.":"No email yet. Add one to send reports here.";em.classList.add("none")}
       const links=document.createElement("div");links.className="clinks";
       if(info.phone){const a=document.createElement("a");a.href="tel:"+info.phone.replace(/[^\d+]/g,"");a.textContent=info.phone;links.append(a)}
       if(info.web){const a=document.createElement("a");a.href="https://"+info.web;a.target="_blank";a.rel="noopener";a.textContent="Website";links.append(a)}
-      else{const a=document.createElement("a");a.href="https://www.google.com/search?q="+encodeURIComponent(info.name+" report road hazard email");a.target="_blank";a.rel="noopener";a.textContent="Find their email";links.append(a)}
+      else{const a=document.createElement("a");a.href="https://www.google.com/search?q="+encodeURIComponent(info.name+" "+STATE_NAMES[st]+" report road hazard email");a.target="_blank";a.rel="noopener";a.textContent="Find their email";links.append(a)}
       li.append(top,em,links);
       if(editing===k){
         const box=document.createElement("div");box.className="cedit";
-        const inp=document.createElement("input");inp.type="email";inp.value=mine||"";inp.placeholder=(vr?TO:info.email)||"Their reporting email";
+        const std=vr?ROADS[st].email:info.email;
+        const inp=document.createElement("input");inp.type="email";inp.value=mine||"";inp.placeholder=std||"Their reporting email";
         inp.setAttribute("aria-label","Email for "+info.name);
         const sv=document.createElement("button");sv.type="button";sv.className="mini";sv.textContent="Save";
         const save1=()=>{const v=inp.value.trim();if(v&&!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)){inp.setCustomValidity("Check the email address");inp.reportValidity();return}
-          if(v)S.councils[k]=v;else delete S.councils[k];editing=null;save();renderCouncils();updateButtons();toast(v?"Email saved":"Using the standard email")};
+          if(v)S.councils[k]=v;else delete S.councils[k];editing=null;save();renderCouncils();updateButtons();toast(v?"Email saved":std?"Using the standard email":"Email removed")};
         sv.onclick=save1;inp.onkeydown=e=>{if(e.key==="Enter")save1()};inp.oninput=()=>inp.setCustomValidity("");
         box.append(inp,sv);
-        if(mine&&(vr||info.email)){const rs=document.createElement("button");rs.type="button";rs.className="mini";rs.textContent="Use standard";rs.onclick=()=>{delete S.councils[k];editing=null;save();renderCouncils();updateButtons();toast("Using the standard email")};box.append(rs)}
+        if(mine&&std){const rs=document.createElement("button");rs.type="button";rs.className="mini";rs.textContent="Use standard";rs.onclick=()=>{delete S.councils[k];editing=null;save();renderCouncils();updateButtons();toast("Using the standard email")};box.append(rs)}
         li.append(box);
       }
       list.append(li);
@@ -557,10 +629,12 @@
     $("councilCount").textContent=keys.length?"":"No council matches that search.";
   }
   $("councilSearch").addEventListener("input",renderCouncils);
-  function focusCouncil(c){
-    const k=coreName(c);$("councilBox").open=true;openState="vic";$("councilSearch").value="";editing=k;renderCouncils();
+  // Opens Council contacts at one council ("vic:melton") or road authority ("road:vic"), ready to add an email.
+  function focusCouncil(k){
+    const st=keyState(k);$("councilBox").open=true;openState=STATE_NAMES[st]?st:null;$("councilSearch").value="";editing=openState?k:null;renderCouncils();
     const li=$("councilList").querySelector('li[data-key="'+CSS.escape(k)+'"]');
     if(li){li.scrollIntoView({block:"center"});const el=li.querySelector("input");if(el)el.focus()}
+    else $("councilBox").scrollIntoView({block:"start"});
   }
   function renderHistory(){
     const ul=$("history");ul.innerHTML="";
@@ -607,11 +681,13 @@
       save();renderQueue();renderHistory();renderCouncils();
     });
   }
-  // Tell the map server which council's area each pothole is in (core name), and whether it's a VicRoads road.
-  // Worst offenders counts everything in the area; VicRoads roads also get their own total.
-  function councilKey(q){return VIC[coreName(q.council)]?coreName(q.council):""}
+  // Tell the map server which state and council area each pothole is in ("vic:melton"), and whether it's a main road.
+  // Worst offenders counts everything in the area; each state's main roads also get their own total.
+  // Only councils on our lists are sent, so the league can't fill up with made-up names.
+  function councilKey(q){const k=ckeyOf(q);return CINFO[k]?k:""}
   // The direction of travel goes along too, so older reports pick it up for pothole-ahead warnings.
-  const syncKey=q=>councilKey(q)+"|"+(q.auth==="vicroads"?"vicroads":"")+"|"+(q.bearing==null?"":q.bearing);
+  // "2|" marks the format with states, so every report re-syncs once after the update.
+  const syncKey=q=>"2|"+councilKey(q)+"|"+stateOf(q)+"|"+(q.auth==="road"?"road":"")+"|"+(q.bearing==null?"":q.bearing);
   async function syncCouncils(){
     if(!navigator.onLine)return;
     const all=[...S.queue,...S.history.flatMap(h=>h.items||[])];
@@ -620,7 +696,7 @@
       const want=syncKey(q);if((q.councilSent||"")===want)continue;
       q.councilSyncing=true;
       try{
-        const r=await fetch(API+"/api/potholes/"+encodeURIComponent(q.mapId)+"/council",{method:"POST",headers:{"Content-Type":"application/json","X-Delete-Key":q.mapKey},body:JSON.stringify({council:councilKey(q),vicroads:q.auth==="vicroads",heading:q.bearing==null?null:+q.bearing})});
+        const r=await fetch(API+"/api/potholes/"+encodeURIComponent(q.mapId)+"/council",{method:"POST",headers:{"Content-Type":"application/json","X-Delete-Key":q.mapKey},body:JSON.stringify({council:councilKey(q),state:stateOf(q),road:q.auth==="road",heading:q.bearing==null?null:+q.bearing})});
         if(r.ok){q.councilSent=want;setStats(await r.json())}else if(r.status===403||r.status===400)q.councilSent=want;
       }catch(e){}
       finally{delete q.councilSyncing;save()}
@@ -705,17 +781,32 @@
   // ---------- global counter ----------
   function setStats(d){
     if(!d||typeof d.total!=="number")return;
-    const worst=(Array.isArray(d.worst)?d.worst:[]).filter(w=>Array.isArray(w)&&VIC[w[0]]).map(w=>[w[0],Math.max(0,Math.floor(+w[1])||0)]).slice(0,3);
-    S.stats={total:d.total,week:d.week||0,fixed:d.fixed||0,vicroads:Math.max(0,Math.floor(+d.vicroads)||0),worst};save();renderStats();
+    const cnt=x=>Math.max(0,Math.floor(+x)||0);
+    // "league" has state keys ("vic:melton"); servers before the national update sent Victorian core names as "worst".
+    const lg=Array.isArray(d.league)?d.league:(Array.isArray(d.worst)?d.worst:[]).map(w=>Array.isArray(w)?["vic:"+w[0],w[1]]:w);
+    const worst=lg.filter(w=>Array.isArray(w)&&CINFO[w[0]]).map(w=>[w[0],cnt(w[1])]).slice(0,3);
+    const roads={};
+    if(d.roads&&typeof d.roads==="object")Object.keys(d.roads).forEach(st=>{if(ROADS[st]&&cnt(d.roads[st]))roads[st]=cnt(d.roads[st])});
+    else if(cnt(d.vicroads))roads.vic=cnt(d.vicroads);
+    S.stats={total:d.total,week:d.week||0,fixed:d.fixed||0,roads,worst};save();renderStats();
   }
   function renderStats(){
     const s=S.stats,n=x=>(+x||0).toLocaleString("en-AU");
     $("gcTotal").textContent=s?n(s.total):"\u2013";$("gcWeek").textContent=s&&s.week?n(s.week)+" this week":"";
     $("gcFixed").textContent=s?n(s.fixed):"\u2013";
-    const w=(s&&s.worst)||[],vr=(s&&s.vicroads)||0,ol=$("worstList");ol.innerHTML="";$("worst").hidden=!w.length&&!vr;
-    $("worstVr").hidden=!vr;$("worstVrN").textContent=n(vr);
-    w.forEach(([k,c])=>{const li=document.createElement("li");const nm=document.createElement("span");nm.textContent=shortCouncil(VIC[k].name);
+    // Saved stats from before the national update have Victorian core names and a single VicRoads count.
+    const w=((s&&s.worst)||[]).map(([k,c])=>[k.includes(":")?k:"vic:"+k,c]).filter(([k])=>CINFO[k]);
+    const roads=(s&&(s.roads||(s.vicroads?{vic:s.vicroads}:null)))||{},rs=STATE_ORDER.filter(st=>roads[st]);
+    const ol=$("worstList");ol.innerHTML="";$("worst").hidden=!w.length&&!rs.length;
+    // State tags only once the league spans more than one state.
+    const many=new Set(w.map(([k])=>keyState(k))).size>1;
+    w.forEach(([k,c])=>{const li=document.createElement("li");const nm=document.createElement("span");nm.textContent=shortCouncil(k)+(many?" ("+keyState(k).toUpperCase()+")":"");
       const b=document.createElement("b");b.textContent=n(c);li.append(nm,b);ol.append(li)});
+    const box=$("worstRoads");box.innerHTML="";box.hidden=!rs.length;
+    rs.forEach(st=>{const p=document.createElement("p");p.className="worst-vr";const b=document.createElement("b");b.textContent=n(roads[st]);
+      p.append(st==="vic"?"VicRoads roads":st.toUpperCase()+" main roads",b);box.append(p)});
+    if(rs.length){const sm=document.createElement("small");sm.className="worst-note";
+      sm.textContent=(rs.length===1&&rs[0]==="vic"?"Potholes on VicRoads roads statewide.":"Potholes on main roads, by state.")+" They also count in their council's area above.";box.append(sm)}
   }
   async function fetchStats(){try{const r=await fetch(API+"/api/stats");if(r.ok)setStats(await r.json())}catch(e){}}
 

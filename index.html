@@ -72,8 +72,8 @@
       <div class="worst" id="worst" hidden>
         <span class="worst-h">Worst offenders</span>
         <ol id="worstList"></ol>
-        <small>Councils with the most potholes reported in their area, VicRoads roads included</small>
-        <p class="worst-vr" id="worstVr" hidden>VicRoads roads <b id="worstVrN"></b><small>Potholes on VicRoads roads statewide. They also count in their council's area above.</small></p>
+        <small>Councils with the most potholes reported in their area, main roads included</small>
+        <div id="worstRoads" hidden></div>
       </div>
     </div>
     <div class="share-row">
@@ -100,7 +100,8 @@
     <h2>To send <span class="count" id="qCount"></span></h2>
     <ol class="queue" id="queue"></ol>
     <div class="actions">
-      <button class="btn primary" id="sendBtn" type="button">Email VicRoads</button>
+      <button class="btn primary" id="sendBtn" type="button" disabled>Nothing for main roads yet</button>
+      <div class="actions" id="roadBtns"></div>
       <div class="actions" id="councilBtns"></div>
       <button class="btn" id="lookupBtn" type="button" hidden>Retry lookups</button>
       <button class="btn danger" id="clearBtn" type="button" hidden>Clear all reports</button>

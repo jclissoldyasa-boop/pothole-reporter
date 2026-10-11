@@ -13,7 +13,7 @@ const schema = readFileSync(new URL("../migrations/0001_init.sql", import.meta.u
 ok(!/\b(name|email|phone|ip|address|time|user)\w*\s+(text|integer|real)/.test(schema.replace(/--.*$/gm, "")), "schema has no personal-data columns");
 
 const stats = await (await fetch(BASE + "/api/stats")).json();
-ok(JSON.stringify(Object.keys(stats).sort()) === '["fixed","total","vicroads","week","worst"]', "stats returns only counts and the council table");
+ok(JSON.stringify(Object.keys(stats).sort()) === '["fixed","league","roads","total","vicroads","week","worst"]', "stats returns only counts and the council table");
 
 const a = await post(JSON.stringify({ lat: -37.6870123, lng: 144.5620456, name: "Sam", phone: "0400 000 000", email: "sam@example.com" }));
 const ra = await a.json();
@@ -68,8 +68,25 @@ ok((await hpt())[7] === 90, "update without a heading keeps the saved one");
 await own(hp.id, "council", hp.key, { council: "melton", heading: 273 });
 ok((await hpt())[7] === 270, "owner can fill in the heading later");
 await del(hp.id, hp.key);
-ok(vr.vicroads === tagged.vicroads + 1 && vr.worst.find(w => w[0] === "melton")[1] === tagged.worst.find(w => w[0] === "melton")[1],
+ok(vr.vicroads === tagged.vicroads + 1 && vr.roads.vic === vr.vicroads && vr.worst.find(w => w[0] === "melton")[1] === tagged.worst.find(w => w[0] === "melton")[1],
   "VicRoads pothole counts in its council area and the VicRoads total");
+
+// National format: councils keyed by state, main roads counted per state. The old format above still works.
+const nat = await (await post(JSON.stringify({ lat: -33.81, lng: 151.0 }))).json();
+const nc = body => own(nat.id, "council", nat.key, body);
+ok(vr.league.some(w => w[0] === "vic:melton") && vr.worst.some(w => w[0] === "melton"), "league uses state keys, old 'worst' keeps Victorian names");
+ok((await nc({ council: "vic:melton", state: "vic", road: false })).status === 200, "state-keyed Victorian council accepted");
+ok((await nc({ council: "melton", state: "vic", road: false })).status === 400, "new format needs the state in the council key");
+ok((await nc({ council: "nsw:made up", state: "nsw", road: false })).status === 400, "councils not on a list refused (no made-up names in the league)");
+ok((await nc({ council: "vic:melton", state: "nsw", road: false })).status === 400, "council and state must match");
+ok((await nc({ council: "", state: "narnia", road: true })).status === 400, "unknown state refused");
+ok((await nc({ council: "", state: "nsw", road: "yes" })).status === 400, "road flag must be true or false");
+const nsw = await (await nc({ council: "", state: "nsw", road: true })).json();
+ok(nsw.roads.nsw >= 1 && nsw.vicroads === vr.vicroads, "NSW main road counts for NSW, not VicRoads");
+const back = await (await nc({ council: "", state: "nsw", road: false })).json();
+ok((back.roads.nsw || 0) === nsw.roads.nsw - 1, "un-marking a main road takes it off the state total");
+await del(nat.id, nat.key);
+
 const d = await (await post(JSON.stringify({ lat: -37.72, lng: 144.62 }))).json();
 ok((await own(d.id, "fixed", ra.key)).status === 403, "can't mark another phone's report fixed");
 const fx = await (await own(d.id, "fixed", d.key)).json();
