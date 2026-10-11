@@ -165,6 +165,10 @@ ul.councils li:first-child{border-top:none}
 .mini.ok{color:var(--ok);border-color:var(--ok)}
 .tag.ok{background:var(--ok);color:#fff}
 .hitem{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:6px;font-size:.88rem}
+.hitem>span:first-child{flex:1}
+.hitem .mini+.mini{margin-left:-4px}
+.qedit.reroute{padding-left:0;margin-bottom:6px}
+.reroute .sub{margin:0 0 6px}
 .tally .counter,.tally .worst{width:100%;max-width:340px}
 .share-row{display:flex;gap:8px;margin-top:14px;max-width:340px}
 .share-row .btn{padding:11px 10px;font-size:.98rem}

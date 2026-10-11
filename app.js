@@ -375,6 +375,7 @@
     else L.push("   GPS: "+q.lat+", "+q.lng+(q.acc!=null?" (within about "+q.acc+" m)":""));
     L.push("   Map: "+maps(q));
     L.push("   "+(q.est?"Reported":"Seen")+": "+t.toLocaleString("en-AU",{dateStyle:"medium",timeStyle:"short"}));
+    if(q.resend)L.push("   First reported to "+(q.resend.from||"another authority")+" on "+new Date(q.resend.at).toLocaleDateString("en-AU",{dateStyle:"medium"})+", who advised this road is not theirs.");
     return L.join("\n");
   }
   function compose(items){
@@ -528,7 +529,8 @@
       fx.setAttribute("aria-label","Pothole "+(i+1)+" has been fixed");fx.title="Takes it off the map but keeps it in the counts";
       fx.onclick=()=>markFixed(q);
       const del=document.createElement("button");del.className="mini danger";del.type="button";del.textContent="Delete";
-      del.setAttribute("aria-label","Delete pothole "+(i+1)+", also from the riders' map and counts");del.title="Also removes it from the riders' map and counts";
+      if(q.resend){del.setAttribute("aria-label","Cancel re-sending pothole "+(i+1));del.title="Cancels the re-send. The report in Sent and the map pin stay"}
+      else{del.setAttribute("aria-label","Delete pothole "+(i+1)+", also from the riders' map and counts");del.title="Also removes it from the riders' map and counts"}
       del.onclick=()=>removeReports([q.id]);
       const btns=document.createElement("div");btns.className="qbtns";btns.append(ed,fx,del);
       head.append(num,meta,btns);
@@ -686,6 +688,43 @@
     if(li){li.scrollIntoView({block:"center"});const el=li.querySelector("input");if(el)el.focus()}
     else $("councilBox").scrollIntoView({block:"start"});
   }
+  // A council (or road authority) wrote back to say a report isn't theirs: send a copy to the other one.
+  let reroute=null;
+  function rerouteBox(q,h){
+    const box=document.createElement("div");box.className="qedit reroute";
+    const st=stateOf(q),opts=[];
+    if(q.auth!=="road"&&st)opts.push(["road",roadName(st)]);
+    if(q.auth!=="council"&&st!=="act"&&q.council)opts.push(["council",shortCouncil(ckeyOf(q),q.council)]);
+    const p=document.createElement("p");p.className="sub";
+    p.textContent=opts.length?"Did "+(h.to||"they")+" say this isn't theirs? Pick who it should go to. A copy goes back on your To send list, noting it was first sent to "+(h.to||"someone else")+".":"Couldn't tell who else looks after this road. Open Council contacts to find them.";
+    box.append(p);
+    const row=document.createElement("div");row.className="chips";
+    opts.forEach(([v,l])=>{const b=document.createElement("button");b.type="button";b.className="chip";b.textContent="Send to "+l;b.onclick=()=>resend(q,h,v);row.append(b)});
+    const c=document.createElement("button");c.type="button";c.className="chip";c.textContent="Cancel";c.onclick=()=>{reroute=null;renderHistory()};row.append(c);
+    box.append(row);return box;
+  }
+  function resend(q,h,auth){
+    const copy=JSON.parse(JSON.stringify(q));
+    ["emailed","fixed","councilSyncing","movedTo","authFrom"].forEach(k=>delete copy[k]);
+    copy.id=q.id+"r"+Date.now().toString(36).slice(-3);copy.auth=auth;copy.authSet=true;
+    copy.resend={from:h.to||"",at:h.at,ref:q.id};
+    copy.why=(h.to||"The first body")+" said it's not theirs";
+    // The original keeps its place in Sent; the copy now speaks for this pothole on the riders' map.
+    q.authFrom=q.auth;q.auth=auth;q.movedTo=auth;
+    S.queue.push(copy);reroute=null;save();renderQueue();renderHistory();renderCouncils();
+    toast("Added to To send for "+(auth==="road"?roadName(roadKey(copy)):shortCouncil(ckeyOf(copy),copy.council)),()=>{
+      S.queue=S.queue.filter(x=>x!==copy);undoMove(copy);save();renderQueue();renderHistory();renderCouncils()});
+  }
+  // Put a Sent report back how it was when its re-send copy is removed before sending.
+  function undoMove(copy){
+    if(!copy.resend)return;
+    const o=S.history.flatMap(h=>h.items||[]).find(x=>x.id===copy.resend.ref&&x.movedTo);
+    if(o){o.auth=o.authFrom||o.auth;delete o.movedTo;delete o.authFrom}
+  }
+  function redoMove(copy){
+    const o=S.history.flatMap(h=>h.items||[]).find(x=>x.id===copy.resend.ref&&!x.movedTo);
+    if(o){o.authFrom=o.auth;o.auth=copy.auth;o.movedTo=copy.auth}
+  }
   function renderHistory(){
     const ul=$("history");ul.innerHTML="";
     $("clearHistoryBtn").hidden=!S.history.length;
@@ -700,9 +739,16 @@
         const row=document.createElement("div");row.className="hitem";
         const t=document.createElement("span");t.textContent=(q.road||"Pothole")+(q.suburb?", "+q.suburb:"");
         row.append(t);
-        if(q.fixed){const f=document.createElement("span");f.className="tag ok";f.textContent="\u201cFixed\u201d";row.append(f)}
-        else{const b=document.createElement("button");b.type="button";b.className="mini ok";b.textContent="Mark fixed";b.onclick=()=>markFixed(q,h);row.append(b)}
+        if(q.movedTo){const f=document.createElement("span");f.className="tag";f.textContent=(S.queue.some(x=>x.resend&&x.resend.ref===q.id)?"Re-sending to ":"Re-sent to ")+(q.movedTo==="road"?roadName(roadKey(q)):shortCouncil(ckeyOf(q),q.council));row.append(f)}
+        else if(q.fixed){const f=document.createElement("span");f.className="tag ok";f.textContent="\u201cFixed\u201d";row.append(f)}
+        else{
+          const b=document.createElement("button");b.type="button";b.className="mini ok";b.textContent="Mark fixed";b.onclick=()=>markFixed(q,h);
+          const w=document.createElement("button");w.type="button";w.className="mini";w.textContent="Wrong body?";
+          w.onclick=()=>{reroute=reroute===q.id?null:q.id;renderHistory()};
+          row.append(w,b);
+        }
         li.append(row);
+        if(reroute===q.id&&!q.movedTo)li.append(rerouteBox(q,h));
       });
       ul.appendChild(li);
     });
@@ -742,7 +788,7 @@
     if(!navigator.onLine)return;
     const all=[...S.queue,...S.history.flatMap(h=>h.items||[])];
     for(const q of all){
-      if(!q.mapId||q.deleted||q.councilSyncing||q.lookup==="pending")continue;
+      if(!q.mapId||q.deleted||q.movedTo||q.councilSyncing||q.lookup==="pending")continue;
       const want=syncKey(q);if((q.councilSent||"")===want)continue;
       q.councilSyncing=true;
       try{
@@ -756,13 +802,15 @@
     const gone=S.queue.map((q,i)=>[i,q]).filter(([,q])=>ids.includes(q.id));
     if(!gone.length)return;
     const after=Date.now()+7000;
-    gone.forEach(([,q])=>{q.deleted=true;if(q.mapId)S.unshare.push({id:q.mapId,key:q.mapKey,ref:q.id,after})});
-    S.queue=S.queue.filter(q=>!ids.includes(q.id));save();renderQueue();renderCouncils();
+    // A re-send copy shares its map pin with the report in Sent, so removing it leaves the pin alone.
+    gone.forEach(([,q])=>{if(q.resend){undoMove(q);return}q.deleted=true;if(q.mapId)S.unshare.push({id:q.mapId,key:q.mapKey,ref:q.id,after})});
+    S.queue=S.queue.filter(q=>!ids.includes(q.id));save();renderQueue();renderCouncils();renderHistory();
     setTimeout(flushUnshare,7500);
-    toast((gone.length===1?"Deleted":gone.length+" deleted")+", and off the riders' map and counts.",()=>{
-      gone.forEach(([i,q])=>{q.deleted=false;if(!S.queue.some(x=>x.id===q.id))S.queue.splice(Math.min(i,S.queue.length),0,q)});
+    const onlyCopies=gone.every(([,q])=>q.resend);
+    toast(onlyCopies?(gone.length===1?"Re-send cancelled":gone.length+" re-sends cancelled")+". Still on the riders' map.":(gone.length===1?"Deleted":gone.length+" deleted")+", and off the riders' map and counts.",()=>{
+      gone.forEach(([i,q])=>{q.deleted=false;if(q.resend)redoMove(q);if(!S.queue.some(x=>x.id===q.id))S.queue.splice(Math.min(i,S.queue.length),0,q)});
       S.unshare=S.unshare.filter(u=>!gone.some(([,q])=>q.id===u.ref));
-      save();renderQueue();renderCouncils();
+      save();renderQueue();renderCouncils();renderHistory();
     });
   }
   // Swipe a report left to delete it.
