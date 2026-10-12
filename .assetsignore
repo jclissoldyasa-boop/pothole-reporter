@@ -7,3 +7,4 @@ wrangler.jsonc
 site-worker.js
 .assetsignore
 .gitignore
+tools
