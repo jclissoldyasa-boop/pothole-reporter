@@ -129,6 +129,9 @@
   const VR_PART={"coburns road":"VicRoads only between the Western Freeway and High Street","high street":"VicRoads only between the Melton Highway and Coburns Road","christies road":"VicRoads only between Caroline Springs station and Ballarat Road"};
   // Towns in the Shire of Moorabool, used when the council boundary lookup can't be reached.
   const MOORABOOL_SUBURBS=["bacchus marsh","maddingley","darley","ballan","myrniong","gordon","coimadai","merrimu","long forest","hopetoun park","greendale","blackwood","mount egerton","wallace","bungaree","dunnstown","millbrook","rowsley","balliang"];
+  // "Western Freeway" and "western fwy" are the same road; so are "Melton Highway" and "Melton Hwy".
+  const ROAD_TYPES=/ (road|street|highway|freeway|drive|avenue|parade|way|lane|boulevard|bypass|trail|terrace|causeway|place|track|esplanade|grove|crescent|court|link|tunnel|close|circuit|rise|promenade)$/;
+  const sameRoad=(a,b)=>{a=norm(a);b=norm(b);return !!a&&!!b&&(a===b||a.replace(ROAD_TYPES,"")===b.replace(ROAD_TYPES,""))};
   function norm(r){return(r||"").toLowerCase().replace(/[-–—'.]/g," ").replace(/\brd\b/g,"road").replace(/\bst\b/g,"street").replace(/\bhwy\b/g,"highway").replace(/\bfwy\b/g,"freeway").replace(/\bdr\b/g,"drive").replace(/\s+/g," ").trim()}
   // Route numbers that mark a state road. Victoria and Tasmania letter theirs M, A, B and C, the rest of the
   // east M, A and B. WA, Queensland and the NT also use plain numbered state routes.
@@ -150,6 +153,15 @@
     // Canberra has no councils: the ACT Government looks after every road.
     if(st==="act")return{auth:"road",why:"The ACT Government looks after every road in the ACT"};
     if(/service road/.test(r))return council?{auth:"council",why:"Service roads beside main roads are council's"}:{auth:"check",why:"Service road, but the council wasn't found. Add it under Details"};
+    // Victoria: VicRoads' own list of the roads it manages beats every rule of thumb below.
+    if(st==="vic"&&q.dtp){
+      const tol=q.est?40:Math.max(30,Math.min(60,(+q.acc||10)*2));
+      const hit=q.dtp.find(([d,ns])=>d<=tol&&ns.some(n=>sameRoad(n,r)));
+      if(hit)return{auth:"road",why:"On VicRoads' list of roads it manages"+(hit[2]?" (route "+hit[2]+")":"")};
+      const next=q.dtp[0];
+      if(next&&next[0]<=10)return{auth:"check",why:"Right beside "+titleCase(next[1][0]||"a VicRoads road")+", a VicRoads road. Check which one it's on, then pick"};
+      if(council)return{auth:"council",why:"Not on VicRoads' list of roads it manages, so "+councilName(st+":"+coreName(council),council)+"'s"};
+    }
     if(/\b(freeway|highway|motorway)\b/.test(r))return{auth:"road",why:"Freeways and highways are "+rn};
     if(ref)return{auth:"road",why:"Route "+ref+" is a "+rn+" road"};
     // Outside Victoria, OpenStreetMap's motorway and trunk roads are almost always state roads.
@@ -189,6 +201,33 @@
       }catch(e){}finally{clearTimeout(t)}
     }
     return null;
+  }
+  // VicRoads (Department of Transport and Planning) publishes every road it manages. tools/build-vicroads-tiles.py cuts
+  // that into 5 km tiles in dtp/; a missing tile means no VicRoads road within about 60 m of anywhere in it.
+  // q.dtp lists the nearest VicRoads road sections within 80 m: [metres, [names], route number].
+  const dtpTiles=new Map();
+  const needsDtp=q=>stateOf(q)==="vic"&&!q.dtpDone&&(q.dtpTries||0)<4;
+  function dtpTile(lat,lng){
+    const k=Math.floor(lng*20)+"_"+Math.floor(lat*20);
+    if(!dtpTiles.has(k))dtpTiles.set(k,fetch("dtp/"+k+".json").then(r=>r.status===404?{n:[],s:[]}:r.ok?r.json():Promise.reject(new Error("http "+r.status))).catch(e=>{dtpTiles.delete(k);throw e}));
+    return dtpTiles.get(k);
+  }
+  async function vicRoadCheck(q){
+    try{
+      const lat=+q.lat,lng=+q.lng,t=await dtpTile(lat,lng);
+      const kx=111320*Math.cos(lat*Math.PI/180),ky=110540,px=lng*kx,py=lat*ky,near=[];
+      (t.s||[]).forEach(seg=>{
+        let x=seg[2],y=seg[3],best=Infinity,ax=x/1e5*kx-px,ay=y/1e5*ky-py;
+        for(let i=4;i+1<seg.length;i+=2){
+          x+=seg[i];y+=seg[i+1];
+          const bx=x/1e5*kx-px,by=y/1e5*ky-py,dx=bx-ax,dy=by-ay,l=dx*dx+dy*dy;
+          const u=l?Math.max(0,Math.min(1,-(ax*dx+ay*dy)/l)):0,cx=ax+u*dx,cy=ay+u*dy;
+          best=Math.min(best,Math.hypot(cx,cy));ax=bx;ay=by;
+        }
+        if(best<=80)near.push([Math.round(best),seg[0].map(i=>t.n[i]).filter(Boolean),seg[1]||""]);
+      });
+      q.dtp=near.sort((a,b)=>a[0]-b[0]).slice(0,6);q.dtpDone=true;
+    }catch(e){q.dtpTries=(q.dtpTries||0)+1}
   }
   // Queensland's own road lookup (QLDTraffic) names the Transport and Main Roads office for a spot and its email.
   // It answers for anywhere within a few hundred metres of a state road, so it picks the office, not whose road it is.
@@ -240,15 +279,19 @@
       if(road&&!q.roadSet)q.road=road;
       useArea(q,await areaP);
       if(needsQld(q))await qldOffice(q);
+      if(needsDtp(q))await vicRoadCheck(q);
       if(!road){q.lookup="none";applyClass(q);return false}
       q.lookup="done";applyClass(q);return true;
     }catch(e){useArea(q,await areaP);q.lookup="failed";applyClass(q);return false}
   }
   async function lookupMissing(){
-    const todo=S.queue.filter(q=>(q.lookup!=="done"&&q.lookup!=="none")||needsArea(q)||needsQld(q));
+    const todo=S.queue.filter(q=>(q.lookup!=="done"&&q.lookup!=="none")||needsArea(q)||needsQld(q)||needsDtp(q));
     if(!todo.length)return;
     $("lookupBtn").disabled=true;$("lookupBtn").textContent="Looking up…";
-    for(const q of todo){q.lookup="pending";renderQueue();await lookup(q);save();renderQueue()}
+    for(const q of todo){
+      // Only VicRoads' list still to check: no need to look the road up again.
+      if(q.lookup==="done"&&!needsArea(q)&&!needsQld(q)&&needsDtp(q)){await vicRoadCheck(q);applyClass(q);save();renderQueue();continue}
+      q.lookup="pending";renderQueue();await lookup(q);save();renderQueue()}
     renderCouncils();
     $("lookupBtn").disabled=false;$("lookupBtn").textContent="Retry lookups";
   }
@@ -586,7 +629,7 @@
     });
     syncCouncils();setUrgent();
     $("clearBtn").hidden=$("swipeHint").hidden=!S.queue.length;if(!S.queue.length)$("clearConfirm").hidden=true;
-    $("lookupBtn").hidden=!S.queue.some(q=>q.lookup==="failed"||q.lookup==="offline"||(q.lookup==="done"&&(needsArea(q)||needsQld(q))));
+    $("lookupBtn").hidden=!S.queue.some(q=>q.lookup==="failed"||q.lookup==="offline"||(q.lookup==="done"&&(needsArea(q)||needsQld(q)||needsDtp(q))));
   }
   // The footer's "urgent danger" number is the road authority for wherever you last logged a pothole.
   // Before the first report, the phone's time zone is a good guess at the state.
@@ -728,6 +771,15 @@
     const o=S.history.flatMap(h=>h.items||[]).find(x=>x.id===copy.resend.ref&&!x.movedTo);
     if(o){o.authFrom=o.auth;o.auth=copy.auth;o.movedTo=copy.auth}
   }
+  // Reports sent to Victorian councils before VicRoads' list was used: check them once, so Sent can point out the ones
+  // VicRoads says are its roads.
+  let sentChecking=false;
+  async function checkSent(){
+    if(sentChecking||!navigator.onLine)return;sentChecking=true;
+    const todo=S.history.flatMap(h=>h.items||[]).filter(q=>q.auth==="council"&&!q.movedTo&&needsDtp(q)).slice(0,80);
+    for(const q of todo)await vicRoadCheck(q);
+    sentChecking=false;if(todo.length){save();renderHistory()}
+  }
   function renderHistory(){
     const ul=$("history");ul.innerHTML="";
     $("clearHistoryBtn").hidden=!S.history.length;
@@ -745,6 +797,7 @@
         if(q.movedTo){const f=document.createElement("span");f.className="tag";f.textContent=(S.queue.some(x=>x.resend&&x.resend.ref===q.id)?"Re-sending to ":"Re-sent to ")+(q.movedTo==="road"?roadName(roadKey(q)):shortCouncil(ckeyOf(q),q.council));row.append(f)}
         else if(q.fixed){const f=document.createElement("span");f.className="tag ok";f.textContent="\u201cFixed\u201d";row.append(f)}
         else{
+          if(q.auth==="council"&&stateOf(q)==="vic"&&q.dtpDone&&classify(q).auth==="road"){const f=document.createElement("span");f.className="tag warn";f.textContent="VicRoads' road?";f.title="On VicRoads' list of roads it manages. Tap Wrong body? to send it there";t.append(" ",f)}
           const b=document.createElement("button");b.type="button";b.className="mini ok";b.textContent="Mark fixed";b.onclick=()=>markFixed(q,h);
           const w=document.createElement("button");w.type="button";w.className="mini";w.textContent="Wrong body?";
           w.onclick=()=>{reroute=reroute===q.id?null:q.id;renderHistory()};
@@ -1081,6 +1134,8 @@
     }catch(e){$("mapCount").textContent="Couldn't load the map. Check your signal."}
   }
   $("mapBox").addEventListener("toggle",()=>{if($("mapBox").open)showMap()});
+  $("sentBox").addEventListener("toggle",()=>{if($("sentBox").open)checkSent()});
+  setTimeout(checkSent,4000);
   // The rest of the FAQ lives on the About page, so there's one copy to keep up to date. Fetched the first time it's opened
   // (the service worker keeps a copy for offline). Our own page, same origin, and only its #faq section is used.
   let faqLoaded=false;
@@ -1297,7 +1352,7 @@
   renderQueue();renderCouncils();renderHistory();renderStats();save();askSent();
   if(movedIn)setTimeout(()=>toast("Moved to motopotholereporter.au with your reports. Reinstall the app from here so your icon opens the new address.",null,9000),400);
   fetchStats();shareMissing();flushUnshare();
-  if(S.queue.some(q=>q.lookup==="failed"||q.lookup==="offline"||needsArea(q)||needsQld(q)))lookupMissing();
+  if(S.queue.some(q=>q.lookup==="failed"||q.lookup==="offline"||needsArea(q)||needsQld(q)||needsDtp(q)))lookupMissing();
 
   // ---------- one tap from the home screen ----------
   // The "Log a pothole" app shortcut (and any link ending ?report=1) logs one as soon as the app opens.

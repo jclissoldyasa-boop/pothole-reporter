@@ -135,6 +135,7 @@ ul.councils li:first-child{border-top:none}
 .cedit{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap}
 .cedit input{flex:1 1 200px}
 .tag{display:inline-block;font-size:.68rem;font-weight:800;text-transform:uppercase;letter-spacing:.04em;padding:1px 6px;border-radius:4px;background:var(--sign);color:var(--sign-ink);vertical-align:2px}
+.tag.warn{background:var(--flame);color:#fff}
 .tag.mine{background:var(--flame)}
 .pop strong{font-family:var(--head);text-transform:uppercase;letter-spacing:.03em;font-size:1rem}
 .pop-tally{font-size:.82rem;color:#444;margin:4px 0 8px}
