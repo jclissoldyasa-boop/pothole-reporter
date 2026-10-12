@@ -372,9 +372,10 @@
     if(q.pos)L.push("   Position: "+q.pos);
     if(q.size)L.push("   Size: "+q.size);
     if(q.est)L.push("   GPS: "+q.lat+", "+q.lng+" (estimated: placed on a map afterwards, not logged on the spot, so please check nearby)");
-    else L.push("   GPS: "+q.lat+", "+q.lng+(q.acc!=null?" (within about "+q.acc+" m)":""));
+    else L.push("   GPS: "+q.lat+", "+q.lng+(q.acc!=null?" (within about "+q.acc+" m)":q.other?" (from the riders' map, within about 10 m)":""));
     L.push("   Map: "+maps(q));
     L.push("   "+(q.est?"Reported":"Seen")+": "+t.toLocaleString("en-AU",{dateStyle:"medium",timeStyle:"short"}));
+    if(q.other)L.push("   Also on the riders' map from another rider"+(q.otherAgo!=null?", first logged "+(q.otherAgo===0?"today":q.otherAgo===1?"yesterday":q.otherAgo+" days ago"):"")+". I've just confirmed it's still there.");
     if(q.resend)L.push("   First reported to "+(q.resend.from||"another authority")+" on "+new Date(q.resend.at).toLocaleDateString("en-AU",{dateStyle:"medium"})+", who advised this road is not theirs.");
     return L.join("\n");
   }
@@ -515,6 +516,7 @@
       const why=document.createElement("div");why.className="why"+(q.auth==="check"?" warn":"");why.textContent=q.why||"";
       meta.append(st,badge,sub,why);
       if(q.est){const tg=document.createElement("span");tg.className="tag est";tg.textContent="Estimated location";meta.append(tg)}
+      if(q.other){const tg=document.createElement("span");tg.className="tag";tg.textContent="Another rider's, you confirmed";meta.append(tg)}
       if(q.emailed){
         const em=document.createElement("div");em.className="emailed";
         const tg=document.createElement("span");tg.className="tag";tg.textContent="Emailed "+dayName(q.emailed.at)+", not confirmed";
@@ -843,7 +845,7 @@
   // ---------- riders' map: sharing ----------
   // Only the spot goes up. The server keeps the day, and hands back a key so this phone can take it down again.
   async function shareOne(q){
-    if(!S.me.share||q.mapId||q.sharing||(q.shareFail||0)>=3||!navigator.onLine)return;
+    if(!S.me.share||q.mapId||q.other||q.sharing||(q.shareFail||0)>=3||!navigator.onLine)return;
     q.sharing=true;
     try{
       const r=await fetch(API+"/api/potholes",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({lat:+q.lat,lng:+q.lng,heading:q.bearing==null?null:+q.bearing})});
@@ -1015,6 +1017,22 @@
     };
     draw();box.append(h,tally,btns,note);return box;
   }
+  // "Still there" on another rider's pothole puts it on your To send list too, so the council hears it twice.
+  // Not your own (the app knows your map pins), and only once per pothole however often you ride past.
+  const myPin=id=>[...S.queue,...S.history.flatMap(h=>h.items||[])].some(q=>q.mapId===id);
+  function addConfirmed(id,lat,lng,heading,ago){
+    if(!id||!Number.isFinite(lat)||!Number.isFinite(lng)||myPin(id))return false;
+    S.added=Array.isArray(S.added)?S.added:[];
+    if(S.added.includes(id)||S.queue.some(q=>q.other===id))return false;
+    S.added.push(id);if(S.added.length>500)S.added.shift();
+    const b=heading==null||!Number.isFinite(+heading)?null:Math.round(+heading)%360;
+    const item={id:Date.now().toString(36)+Math.random().toString(36).slice(2,5),lat:lat.toFixed(6),lng:lng.toFixed(6),acc:null,
+      bearing:b,dir:b==null?"":toCode(b),time:new Date().toISOString(),road:"",suburb:"",postcode:"",near:"",pos:"",size:"",
+      auth:"check",why:"Looking up road…",lookup:"pending",other:id,otherAgo:ago==null?null:ago};
+    S.queue.push(item);save();renderQueue();
+    lookup(item).then(()=>{save();renderQueue();renderCouncils()});
+    return true;
+  }
   async function vote(p,kind,marker,draw,note){
     if(S.votes[p.id]===kind){note.textContent="You already said that one.";return}
     note.textContent="Sending…";
@@ -1026,7 +1044,8 @@
       S.votes[p.id]=kind;const ids=Object.keys(S.votes);if(ids.length>500)delete S.votes[ids[0]];save();
       const v=d.votes||{};p.gone=+v.gone||0;p.fixed=+v.fixed||0;p.there=+v.there||0;
       if(d.cleared){mapObj.closePopup();mapLayer.removeLayer(marker);toast(kind==="fixed"?"\u201cFixed\u201d and off the map. Ride it gently.":"Off the map. Nice one.");return}
-      draw();note.textContent=QUIPS[kind];
+      const added=kind==="there"&&addConfirmed(p.id,p.lat,p.lng,null,p.ago);
+      draw();note.textContent=added?"Still there. Added to your To send list.":QUIPS[kind];
     }catch(e){note.textContent="Couldn't send that. Check your signal."}
   }
   async function showMap(){
@@ -1091,7 +1110,7 @@
     try{
       const r=await fetch(API+"/api/potholes?days=365");if(!r.ok)return;
       const d=await r.json();
-      aheadPts=(Array.isArray(d.points)?d.points:[]).map(p=>[+p[0],+p[1],/^[A-Za-z0-9_-]{6,32}$/.test(p[3])?p[3]:"",p[7]==null||!Number.isFinite(+p[7])?null:+p[7]])
+      aheadPts=(Array.isArray(d.points)?d.points:[]).map(p=>[+p[0],+p[1],/^[A-Za-z0-9_-]{6,32}$/.test(p[3])?p[3]:"",p[7]==null||!Number.isFinite(+p[7])?null:+p[7],Math.max(0,Math.floor(+p[2])||0)])
         .filter(p=>Number.isFinite(p[0])&&Number.isFinite(p[1])&&p[2]);
       try{localStorage.setItem(AHEAD_LS,JSON.stringify(aheadPts))}catch(e){}
     }catch(e){}
@@ -1167,7 +1186,8 @@
       const d=await r.json();setStats(d);
       S.votes[id]=kind;const ids=Object.keys(S.votes);if(ids.length>500)delete S.votes[ids[0]];save();
       if(d.cleared)aheadPts=aheadPts.filter(p=>p[2]!==id);
-      toast(d.cleared?"Off the map. Nice one.":QUIPS[kind]);
+      const pt=aheadPts.find(p=>p[2]===id),added=kind==="there"&&pt&&addConfirmed(id,pt[0],pt[1],pt[3],pt[4]);
+      toast(d.cleared?"Off the map. Nice one.":added?"Still there. Added to your To send list.":QUIPS[kind]);
     }catch(e){toast("Couldn't send that. Check your signal.")}
   }
   $("passThere").onclick=()=>passVote("there");
