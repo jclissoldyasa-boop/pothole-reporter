@@ -412,7 +412,7 @@
     if(!to){
       focusCouncil(who==="council"?key:"road:"+keySt(key));
       const known=who==="council"?councilInfo(key):ROADS[keySt(key)];
-      msg(known&&known.web?name+" takes reports on its website or by phone, not by email. Use those, or add an email under Council contacts.":"Add an email for "+name+" under Council contacts first.","err");
+      msg(known&&known.web?name+" takes reports on its website or by phone, not by email. Use those, or add an email under Council contact directory.":"Add an email for "+name+" under Council contact directory first.","err");
       return null;
     }
     return{items,to,label:name};
@@ -430,7 +430,7 @@
     $("dupeAll").textContent=fresh.length?"Include all "+t.items.length:"No, email "+(old.length===1?"it":"them")+" again";
     $("dupeNew").onclick=()=>{$("dupe").hidden=true;if(fresh.length)sendEmail(t,fresh);else markSent(old.map(q=>q.id),old[0].emailed.to,old[0].emailed.subject)};
     $("dupeAll").onclick=()=>{$("dupe").hidden=true;sendEmail(t,t.items)};
-    $("dupe").hidden=false;msg("");
+    $("dupe").hidden=false;$("sendBox").open=true;msg("");
   }
   function sendEmail(t,items){
     const {subject,body}=compose(items),at=new Date().toISOString();
@@ -445,7 +445,7 @@
     if(!g){$("confirm").hidden=true;return}
     $("confirmText").textContent=now?"Did the email to "+g.label+" send?":"You opened an email to "+g.label+" "+dayName(g.at)+" with "+g.ids.length+(g.ids.length===1?" pothole":" potholes")+". Did it send?";
     $("sentNagText").textContent="Did your email to "+g.label+" send?";
-    $("confirm").hidden=false;
+    $("confirm").hidden=false;if(now)$("sendBox").open=true;
   }
   function markSent(ids,label,subject){
     const items=S.queue.filter(q=>ids.includes(q.id));
@@ -466,7 +466,7 @@
     S.queue.forEach(q=>{if(q.emailed&&q.emailed.at===pending.at)delete q.emailed});
     save();pending=null;renderQueue();askSent();
   };
-  $("sentNag").onclick=()=>{$("confirm").scrollIntoView({block:"center",behavior:"smooth"})};
+  $("sentNag").onclick=()=>{$("sendBox").open=true;$("confirm").scrollIntoView({block:"center",behavior:"smooth"})};
   document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible")askSent()});
   function msg(t,cls){$("sendMsg").textContent=t;$("sendMsg").className="sendmsg"+(cls?" "+cls:"")}
 
@@ -568,7 +568,8 @@
   const emailLabel=its=>{const f=its.filter(q=>!q.emailed).length;return f===its.length?"Email "+f:f?"Email "+f+" new":"Email "+its.length+" again"};
   function updateButtons(){
     const vr=S.queue.filter(q=>q.auth==="road"),ck=S.queue.filter(q=>q.auth==="check");
-    $("qCount").textContent=S.queue.length?S.queue.length+" logged"+(ck.length?", "+ck.length+" to check":""):"";
+    $("qCount").textContent=S.queue.length?"("+S.queue.length+")":"";
+    $("qCount").title=ck.length?ck.length+" to check":"";
     // Main roads: one button per state's road authority. The grey placeholder shows when there are none.
     $("sendBtn").hidden=!!vr.length;
     const rb=$("roadBtns");rb.innerHTML="";
@@ -698,7 +699,7 @@
     if(q.auth!=="road"&&st)opts.push(["road",roadName(st)]);
     if(q.auth!=="council"&&st!=="act"&&q.council)opts.push(["council",shortCouncil(ckeyOf(q),q.council)]);
     const p=document.createElement("p");p.className="sub";
-    p.textContent=opts.length?"Did "+(h.to||"they")+" say this isn't theirs? Pick who it should go to. A copy goes back on your To send list, noting it was first sent to "+(h.to||"someone else")+".":"Couldn't tell who else looks after this road. Open Council contacts to find them.";
+    p.textContent=opts.length?"Did "+(h.to||"they")+" say this isn't theirs? Pick who it should go to. A copy goes back on your To send list, noting it was first sent to "+(h.to||"someone else")+".":"Couldn't tell who else looks after this road. Open the Council contact directory to find them.";
     box.append(p);
     const row=document.createElement("div");row.className="chips";
     opts.forEach(([v,l])=>{const b=document.createElement("button");b.type="button";b.className="chip";b.textContent="Send to "+l;b.onclick=()=>resend(q,h,v);row.append(b)});
@@ -1080,6 +1081,20 @@
     }catch(e){$("mapCount").textContent="Couldn't load the map. Check your signal."}
   }
   $("mapBox").addEventListener("toggle",()=>{if($("mapBox").open)showMap()});
+  // The rest of the FAQ lives on the About page, so there's one copy to keep up to date. Fetched the first time it's opened
+  // (the service worker keeps a copy for offline). Our own page, same origin, and only its #faq section is used.
+  let faqLoaded=false;
+  $("faqBox").addEventListener("toggle",async()=>{
+    if(!$("faqBox").open||faqLoaded)return;
+    try{
+      let r=await fetch("about");if(!r.ok)r=await fetch("about.html");if(!r.ok)throw new Error("http "+r.status);
+      const doc=new DOMParser().parseFromString(await r.text(),"text/html"),sec=doc.getElementById("faq");
+      if(!sec)throw new Error("no faq");
+      const box=$("faqMore");box.innerHTML="";
+      [...sec.children].filter(el=>el.tagName!=="H2").forEach(el=>{el.querySelectorAll("script,[id]").forEach(x=>x.tagName==="SCRIPT"?x.remove():x.removeAttribute("id"));box.append(document.importNode(el,true))});
+      faqLoaded=true;
+    }catch(e){$("faqMsg").textContent="The rest of the questions need signal the first time. Try again when you're back in range."}
+  });
   $("mapRange").querySelectorAll("[data-days]").forEach(b=>b.onclick=()=>{
     mapDays=+b.dataset.days;$("mapRange").querySelectorAll("[data-days]").forEach(x=>x.setAttribute("aria-pressed",x===b));
     if(mapObj)loadPoints();

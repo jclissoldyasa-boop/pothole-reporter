@@ -29,7 +29,7 @@ The app is served from Cloudflare (static assets, `wrangler.jsonc` + `site-worke
 - Deploy the server: `cd server && npm install && npm run deploy` (needs `wrangler login`; applies migrations first). **Deploy the server before the app** whenever the council/state format changes, or new phones' syncs get refused. Live at https://api.motopotholereporter.au (and https://pothole-reporter.drivemate-app.workers.dev, kept for phones on older versions)
 - A copy of the app opened from `localhost` talks to `wrangler dev` on port 8787 instead, so testing doesn't touch the live map.
 
-## Council contacts
+## Council contact directory
 
 - Councils and saved emails are keyed `state:core name` (`vic:melton`), road authorities `road:vic`, because council and suburb names repeat across states.
 
@@ -37,7 +37,7 @@ The app is served from Cloudflare (static assets, `wrangler.jsonc` + `site-worke
 - The server's list of accepted council keys (`server/src/councils.gen.js`) is generated from `councils.js` and the app's `coreName()` by `node server/sync-councils.mjs` (also run by `npm run dev` and `npm run deploy`).
 - `RENAMED` in `app.js` maps councils OpenStreetMap still knows by an old name (District Council of Grant → Southern Limestone Coast, Belyuen Shire → Belyuen Community Government Council).
 - Victorian entries use the customer-service email, which takes road hazard reports; elsewhere it is the council's general email.
-- "Council contacts" opens a list of states and territories. Each shows its road authority (`ROADS` in `app.js`) and the full council list for that state (the ACT has none). Anyone can change the email for any council or road authority. Changes are saved on that phone only, with "Use standard" to go back.
+- "Council contact directory" opens a list of states and territories. Each shows its road authority (`ROADS` in `app.js`) and the full council list for that state (the ACT has none). Anyone can change the email for any council or road authority. Changes are saved on that phone only, with "Use standard" to go back.
 - Council names from OpenStreetMap ("Shire of Moorabool") are matched to the list ("Moorabool Shire Council") on the core name.
 
 ## Privacy and security
@@ -57,3 +57,7 @@ The app is served from Cloudflare (static assets, `wrangler.jsonc` + `site-worke
 - Main roads go to the state's road authority (`ROADS` in `app.js`): VicRoads (enquiries@roads.vic.gov.au), Main Roads WA, Building Tasmania (info@building.tas.gov.au) and NT Government roads by email. Queensland reports go to the local Transport and Main Roads office: the app asks Queensland's own QLDTraffic road lookup (`QLD_LOOKUP` in `app.js`, the service behind qldtraffic.qld.gov.au/lookup.html) for the district office or toll-road operator at that spot, and falls back to the State Management Traffic Centre (131940.tti@tmr.qld.gov.au). The lookup answers for anywhere within a few hundred metres of a state road, so it only picks the office; whether the road is a state road is still decided by the rules below. NSW, SA and the ACT take reports by phone or online form only (checked October 2026), so riders add an email or use those. The ACT has no councils, so every ACT road goes to the ACT Government.
 - Each local-road pothole goes to the council for that spot, found from OpenStreetMap council boundaries (Overpass API), with built-in Melton and Moorabool town lists as a fallback. Reports from different councils on one trip get their own email button.
 - Freeways, highways and roads with a state route number go to the road authority: M/A/B/C in Victoria and Tasmania, M/A/B elsewhere, plus plain numbered routes in WA, Queensland and the NT. Outside Victoria, OpenStreetMap motorway/trunk roads do too. In Melton, the council's published list of VicRoads-controlled roads is also used.
+
+## Layout
+
+The app's menus, in order: To send (collapsible, unsent count in brackets; opens itself for the "did it send?" prompts), Riders' pothole map, Sent, Your details, FAQ, Council contact directory. The FAQ menu has the home-screen shortcut guide and split-screen guide, then loads the rest of its questions from the About page's `#faq` section the first time it's opened, so the questions live in one place (`about.html`).

@@ -280,3 +280,22 @@ button.state:disabled::after{visibility:hidden}
 .worst-vr+.worst-vr{border-top:none;padding-top:0;margin-top:2px}
 .worst small.worst-note{margin-top:2px}
 button.state .tag{white-space:nowrap}
+
+/* FAQ: in the app's FAQ menu and on the About page */
+.faq-group{font-family:var(--head);text-transform:uppercase;letter-spacing:.03em;font-weight:600;font-size:1rem;color:var(--muted);margin:18px 0 8px}
+.faq{display:grid;gap:8px;margin-top:10px}
+.faq details{background:var(--surface);border:1px solid var(--line);border-left:5px solid var(--sign);border-radius:10px;padding:0 14px}
+.faq summary{cursor:pointer;list-style:none;padding:13px 28px 13px 0;position:relative;font-size:1rem;line-height:1.25}
+.faq summary::-webkit-details-marker{display:none}
+.faq summary::after{content:"+";position:absolute;right:0;top:50%;transform:translateY(-50%);font-family:var(--head);font-size:1.5rem;line-height:1;color:var(--muted)}
+.faq details[open] summary::after{content:"\2212"}
+.faq details p,.faq details li{color:var(--muted);font-size:.95rem}
+.faq details>:last-child{margin-bottom:14px}
+.about .faq summary{font-size:1.05rem}
+@media (min-width:760px){.about .faq{grid-template-columns:1fr 1fr;align-items:start}}
+/* Menu headings: a chevron that turns when the menu is open */
+section.card>details>summary{list-style:none;position:relative;padding-right:30px}
+section.card>details>summary::-webkit-details-marker{display:none}
+section.card>details>summary::after{content:"";position:absolute;right:4px;top:50%;width:10px;height:10px;border-right:3px solid var(--muted);border-bottom:3px solid var(--muted);transform:translateY(-70%) rotate(45deg);transition:transform .15s}
+section.card>details[open]>summary::after{transform:translateY(-30%) rotate(-135deg)}
+section.card>details>summary .count{font-size:1rem;color:var(--muted);font-weight:600;margin-left:4px}

@@ -97,7 +97,8 @@
   </section>
 
   <section class="card">
-    <h2>To send <span class="count" id="qCount"></span></h2>
+    <details id="sendBox" open>
+    <summary>To send <span class="count" id="qCount"></span></summary>
     <ol class="queue" id="queue"></ol>
     <div class="actions">
       <button class="btn primary" id="sendBtn" type="button" disabled>Nothing for main roads yet</button>
@@ -130,39 +131,6 @@
     <p class="hint swipe-hint" id="swipeHint" hidden>Pothole been fixed? Tap <b>Fixed</b>: it comes off the map but still counts. <b>Delete</b> (or swipe left) is for mistakes: it also removes the pothole from the riders' map and the counts.</p>
     <p class="sendmsg" id="sendMsg" role="status" aria-live="polite"></p>
     <p class="hint fb-nudge" id="fbNudge" hidden>How's the app working for you? <a class="linkish fb-mail" href="mailto:j.clissoldyasa@gmail.com">Send feedback</a></p>
-  </section>
-
-  <section class="card">
-    <details id="quickBox">
-      <summary>One tap from your home screen</summary>
-      <p class="hint">No time to open the app when a pothole comes up? Set up a home-screen button that logs one the moment you tap it.</p>
-      <p class="guide-done" id="guideDone" hidden>You're in the installed app. Skip to step 5.</p>
-      <p class="guide-h">Android, in Chrome. Takes about a minute.</p>
-      <ol class="guide">
-        <li>
-          <p><b>Got an old Moto Potholes icon?</b> Hold it and tap <b>Remove</b> or <b>Uninstall</b> first. Old icons don't get the shortcut.</p>
-        </li>
-        <li>
-          <p>Open this site in <b>Chrome</b>. Tap the <b>⋮</b> menu at the top right, then <b>Add to Home screen</b>.</p>
-          <div class="mock mock-menu" aria-hidden="true"><span>New tab</span><span>Bookmarks</span><span class="hi">Add to Home screen</span><span>Settings</span></div>
-        </li>
-        <li>
-          <p>Choose <b>Install</b>. <b>Not</b> Create shortcut, which makes a plain bookmark that can't do one-tap logging.</p>
-          <div class="mock mock-choice" aria-hidden="true"><span class="hi">✓ Install</span><span class="no">✗ Create shortcut</span></div>
-        </li>
-        <li>
-          <p>Open <b>Moto Potholes</b> from your home screen. No Chrome address bar at the top means it's installed properly. Tap <b>Allow</b> when it asks for location.</p>
-        </li>
-        <li>
-          <p><b>Press and hold</b> the Moto Potholes icon. Tap <b>Log a pothole</b> and it's logged straight away.</p>
-          <div class="mock mock-hold" aria-hidden="true"><img src="icon-192.png" alt="" width="44" height="44"><span class="pop"><span class="hi">⚠ Log a pothole</span><span>App info</span></span></div>
-        </li>
-        <li>
-          <p><b>Want it as its own button?</b> Hold <b>Log a pothole</b> in that menu and drag it onto your home screen.</p>
-        </li>
-      </ol>
-      <p class="hint">Testing it? Delete the test pothole from <b>To send</b> afterwards so it comes off the riders' map.</p>
-      <p><b>iPhone:</b> iPhones don't do shortcuts. In Safari tap <b>Share</b>, then <b>Add to Home Screen</b>. The app opens with the big button at the top, ready to tap.</p>
     </details>
   </section>
 
@@ -199,18 +167,12 @@
   </section>
 
   <section class="card">
-    <details id="councilBox">
-      <summary>Council contacts</summary>
-      <p class="hint">Where each council takes road hazard reports. Local-road potholes go to the council for that spot, main roads to the state road authority. Want reports to go somewhere else? Tap Change email. It's saved on this phone only.</p>
-      <ul class="states" id="stateList"></ul>
-      <div id="stateView" hidden>
-        <button type="button" class="mini back" id="stateBack">&larr; All states</button>
-        <h3 class="state-title" id="stateTitle"></h3>
-        <input id="councilSearch" type="search" placeholder="Search councils, e.g. Geelong" aria-label="Search councils" autocomplete="off">
-        <ul class="councils" id="councilList"></ul>
-        <p class="hint" id="councilCount" role="status"></p>
-        <p class="hint" id="councilSource"></p>
-      </div>
+    <details id="sentBox">
+      <summary>Sent</summary>
+      <p class="hint">Pothole been fixed since you reported it? Tap <b>Mark fixed</b>. It comes off the riders' map but still counts in the totals. Did a council or road authority write back to say it isn't theirs? Tap <b>Wrong body?</b> to send it to the right one.</p>
+      <ul class="history" id="history"></ul>
+      <button class="mini danger clear-sent" id="clearHistoryBtn" type="button" hidden>Clear sent list</button>
+      <p class="hint">Clearing this list doesn't change the map, but you won't be able to mark those potholes fixed later.</p>
     </details>
   </section>
 
@@ -227,17 +189,72 @@
   </section>
 
   <section class="card">
-    <details>
-      <summary>Sent</summary>
-      <p class="hint">Pothole been fixed since you reported it? Tap <b>Mark fixed</b>. It comes off the riders' map but still counts in the totals. Did a council or road authority write back to say it isn't theirs? Tap <b>Wrong body?</b> to send it to the right one.</p>
-      <ul class="history" id="history"></ul>
-      <button class="mini danger clear-sent" id="clearHistoryBtn" type="button" hidden>Clear sent list</button>
-      <p class="hint">Clearing this list doesn't change the map, but you won't be able to mark those potholes fixed later.</p>
+    <details id="faqBox">
+      <summary>FAQ</summary>
+      <div class="faq">
+        <details><summary>How do I log a pothole with one tap from my home screen?</summary>
+      <p class="hint">No time to open the app when a pothole comes up? Set up a home-screen button that logs one the moment you tap it.</p>
+      <p class="guide-done" id="guideDone" hidden>You're in the installed app. Skip to step 5.</p>
+      <p class="guide-h">Android, in Chrome. Takes about a minute.</p>
+      <ol class="guide">
+        <li>
+          <p><b>Got an old Moto Potholes icon?</b> Hold it and tap <b>Remove</b> or <b>Uninstall</b> first. Old icons don't get the shortcut.</p>
+        </li>
+        <li>
+          <p>Open this site in <b>Chrome</b>. Tap the <b>⋮</b> menu at the top right, then <b>Add to Home screen</b>.</p>
+          <div class="mock mock-menu" aria-hidden="true"><span>New tab</span><span>Bookmarks</span><span class="hi">Add to Home screen</span><span>Settings</span></div>
+        </li>
+        <li>
+          <p>Choose <b>Install</b>. <b>Not</b> Create shortcut, which makes a plain bookmark that can't do one-tap logging.</p>
+          <div class="mock mock-choice" aria-hidden="true"><span class="hi">✓ Install</span><span class="no">✗ Create shortcut</span></div>
+        </li>
+        <li>
+          <p>Open <b>Moto Potholes</b> from your home screen. No Chrome address bar at the top means it's installed properly. Tap <b>Allow</b> when it asks for location.</p>
+        </li>
+        <li>
+          <p><b>Press and hold</b> the Moto Potholes icon. Tap <b>Log a pothole</b> and it's logged straight away.</p>
+          <div class="mock mock-hold" aria-hidden="true"><img src="icon-192.png" alt="" width="44" height="44"><span class="pop"><span class="hi">⚠ Log a pothole</span><span>App info</span></span></div>
+        </li>
+        <li>
+          <p><b>Want it as its own button?</b> Hold <b>Log a pothole</b> in that menu and drag it onto your home screen.</p>
+        </li>
+      </ol>
+      <p class="hint">Testing it? Delete the test pothole from <b>To send</b> afterwards so it comes off the riders' map.</p>
+      <p><b>iPhone:</b> iPhones don't do shortcuts. In Safari tap <b>Share</b>, then <b>Add to Home Screen</b>. The app opens with the big button at the top, ready to tap.</p>
+        </details>
+        <details><summary>Can I use it side by side with my nav app?</summary>
+          <p>Most Android phones can show two apps at once. Put Google Maps, Waze or your favourite nav app on one half and the pothole sign on the other. Pothole-ahead warnings keep working while the app's on screen.</p>
+          <ol class="steps">
+            <li>Open your nav app, then this app.</li>
+            <li>Open your recent apps (swipe up and hold, or tap the square button).</li>
+            <li>Tap the icon at the top of one app's card and choose <b>Split screen</b> (Samsung: <b>Open in split screen view</b>). Then pick the other app.</li>
+            <li>Drag the middle bar to give the map more room. The sign still works at half size.</li>
+          </ol>
+          <p class="hint">iPhones don't do split screen, so on an iPhone switch between the apps instead.</p>
+        </details>
+      </div>
+      <div id="faqMore"><p class="hint" id="faqMsg">Loading questions…</p></div>
+    </details>
+  </section>
+
+  <section class="card">
+    <details id="councilBox">
+      <summary>Council contact directory</summary>
+      <p class="hint">Where each council takes road hazard reports. Local-road potholes go to the council for that spot, main roads to the state road authority. Want reports to go somewhere else? Tap Change email. It's saved on this phone only.</p>
+      <ul class="states" id="stateList"></ul>
+      <div id="stateView" hidden>
+        <button type="button" class="mini back" id="stateBack">&larr; All states</button>
+        <h3 class="state-title" id="stateTitle"></h3>
+        <input id="councilSearch" type="search" placeholder="Search councils, e.g. Geelong" aria-label="Search councils" autocomplete="off">
+        <ul class="councils" id="councilList"></ul>
+        <p class="hint" id="councilCount" role="status"></p>
+        <p class="hint" id="councilSource"></p>
+      </div>
     </details>
   </section>
 
   <p class="footnote">Pull over before you fiddle with the phone. Urgent danger on the road? Call <span id="urgent">VicRoads on 13 11 70</span>. Emergencies, call 000.<br>Map data © OpenStreetMap contributors. Melton sorting also uses the council's list of VicRoads-controlled roads. Queensland main-road reports go to the local Transport and Main Roads office, found with QLDTraffic's road lookup.</p>
-  <p class="footnote"><a class="linkish" href="about">About</a> · <a class="linkish" href="about#faq">FAQ</a> · <a class="linkish fb-link fb-mail" href="mailto:j.clissoldyasa@gmail.com">Feedback</a></p>
+  <p class="footnote"><a class="linkish" href="about">About</a> · <a class="linkish fb-link fb-mail" href="mailto:j.clissoldyasa@gmail.com">Feedback</a></p>
 </div>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 <div class="ahead" id="ahead" role="alert" hidden><span class="ahead-h">Pothole ahead</span><b id="aheadDist"></b></div>
