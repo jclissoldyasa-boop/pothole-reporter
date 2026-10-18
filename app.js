@@ -364,6 +364,7 @@
   // And a sound to match, for riders who can't look: a bright rising ping for a hit, a low buzz for a miss.
   let lastTapSound=0;
   function tapSound(kind){
+    if(S.me.tapSound===false)return;
     try{
       if(!audio){const A=window.AudioContext||window.webkitAudioContext;if(!A)return;audio=new A()}
       if(audio.state==="suspended")audio.resume();
@@ -1317,6 +1318,11 @@
     if(soundMode()==="voice"&&"speechSynthesis" in window)try{speechSynthesis.speak(new SpeechSynthesisUtterance("Pothole ahead"))}catch(e){}
     else if(soundMode()==="beep")beep()};
   renderWarn();
+  function renderTapSnd(){const on=S.me.tapSound!==false,b=$("tapSndBtn");
+    b.setAttribute("aria-pressed",on);b.classList.toggle("on",on);$("tapSndText").textContent=on?"Tap sounds on":"Tap sounds off"}
+  $("tapSndBtn").onclick=()=>{S.me.tapSound=S.me.tapSound===false;save();renderTapSnd();
+    if(S.me.tapSound){lastTapSound=0;tapSound("hit")}toast(S.me.tapSound?"You'll hear a ping on a hit and a buzz on a miss.":"Tap sounds off.")};
+  renderTapSnd();
   if(wantWarn())fetchAhead();
   setInterval(()=>{if(wantWarn()&&document.visibilityState==="visible")fetchAhead()},15*60000);
 
