@@ -359,6 +359,25 @@
   // A glance is all a rider gets: the whole screen edge flashes green for a hit, red for a near miss.
   function flash(kind){
     const el=$("flash");el.className="flash";void el.offsetWidth;el.className="flash "+kind;
+    tapSound(kind.startsWith("hit")?"hit":"miss");
+  }
+  // And a sound to match, for riders who can't look: a bright rising ping for a hit, a low buzz for a miss.
+  let lastTapSound=0;
+  function tapSound(kind){
+    try{
+      if(!audio){const A=window.AudioContext||window.webkitAudioContext;if(!A)return;audio=new A()}
+      if(audio.state==="suspended")audio.resume();
+      // The held green border fades with a second flash; one ping per tap is enough.
+      if(kind==="hit"&&Date.now()-lastTapSound<2500)return;
+      lastTapSound=kind==="hit"?Date.now():0;
+      const t=audio.currentTime;
+      const notes=kind==="hit"?[[880,0,.12],[1320,.1,.35]]:[[180,0,.4]];
+      notes.forEach(([f,o,len])=>{const g=audio.createGain(),v=audio.createOscillator();
+        v.type=kind==="hit"?"sine":"sawtooth";v.frequency.setValueAtTime(f,t+o);
+        if(kind==="miss")v.frequency.linearRampToValueAtTime(120,t+o+len);
+        g.gain.setValueAtTime(.0001,t+o);g.gain.exponentialRampToValueAtTime(kind==="hit"?.6:.35,t+o+.015);g.gain.exponentialRampToValueAtTime(.0001,t+o+len);
+        v.connect(g).connect(audio.destination);v.start(t+o);v.stop(t+o+len+.02)});
+    }catch(e){}
   }
   // Opened from the home-screen shortcut, a quick flash would be over behind the splash screen.
   // So the green border stays on until the pothole is logged (at least 1.2 s), then fades; red if GPS fails.
@@ -1013,21 +1032,42 @@
     navigator.geolocation.getCurrentPosition(p=>{$("pinMsg").textContent="";pinMap.setView([p.coords.latitude,p.coords.longitude],17)},
       ()=>{$("pinMsg").textContent="Couldn't get your location. Search for the road instead."},{enableHighAccuracy:true,maximumAge:30000,timeout:15000});
   };
+  // Nominatim allows one request a second, so searches queue behind each other.
+  async function pinFind(q,vb){
+    const gap=1100-(Date.now()-lastLookup);if(gap>0)await wait(gap);lastLookup=Date.now();
+    const r=await fetch("https://nominatim.openstreetmap.org/search?format=jsonv2&limit=8&addressdetails=1&countrycodes=au"+(vb?"&viewbox="+vb:"")+"&q="+encodeURIComponent(q),{headers:{"Accept-Language":"en-AU"}});
+    if(!r.ok)throw new Error("http "+r.status);
+    return (await r.json()).filter(x=>Number.isFinite(+x.lat)&&Number.isFinite(+x.lon));
+  }
+  const STATE_AB={"New South Wales":"NSW","Victoria":"Vic","Queensland":"Qld","South Australia":"SA","Western Australia":"WA","Tasmania":"Tas","Northern Territory":"NT","Australian Capital Territory":"ACT"};
+  // "Pitt Street, Haymarket, Sydney NSW" rather than the whole Nominatim address with postcode and country.
+  function pinLabel(x){
+    const a=x.address||{},s0=a.state||a.territory,st=STATE_AB[s0]||s0||"";
+    const parts=[x.name||a.road,a.suburb||a.village||a.hamlet,a.town||a.city||a.municipality].filter(Boolean).filter((v,i,l)=>l.indexOf(v)===i);
+    return parts.length?parts.join(", ")+(st?" "+st:""):x.display_name.replace(/, Australia$/,"");
+  }
+  const pinZoom=x=>["city","town","village","suburb","administrative","state","county","municipality"].includes(x.type)||x.addresstype==="state"?14:17;
   $("pinSearch").onsubmit=async e=>{
     e.preventDefault();const q=$("pinQ").value.trim(),ul=$("pinResults");if(!q||!pinMap)return;
     $("pinMsg").textContent="Searching…";ul.hidden=true;ul.innerHTML="";
-    const gap=1100-(Date.now()-lastLookup);if(gap>0)await wait(gap);lastLookup=Date.now();
     try{
       // Places near what the map shows come first (viewbox), but the search covers all of Australia.
       const b=pinMap.getBounds().pad(pinMap.getZoom()>=12?2:0);
       const vb=[b.getWest(),b.getNorth(),b.getEast(),b.getSouth()].map(x=>x.toFixed(3)).join(",");
-      const r=await fetch("https://nominatim.openstreetmap.org/search?format=jsonv2&limit=5&countrycodes=au&viewbox="+vb+"&q="+encodeURIComponent(q),{headers:{"Accept-Language":"en-AU"}});
-      if(!r.ok)throw new Error("http "+r.status);
-      const d=(await r.json()).filter(x=>Number.isFinite(+x.lat)&&Number.isFinite(+x.lon));
-      $("pinMsg").textContent=d.length?"":"Nothing found. Try a road and town, e.g. Coburns Rd Melton.";
+      let d=await pinFind(q,vb),note="";
+      // Road not in the map data (or misspelt)? Try the last word or two as the town, so the rider can drag to the spot.
+      const w=q.replace(/,/g," ").split(/\s+/).filter(Boolean);
+      for(let n=Math.min(2,w.length-1);!d.length&&n>=1;n--){
+        const town=w.slice(-n).join(" ");
+        d=(await pinFind(town)).filter(x=>pinZoom(x)===14);
+        if(d.length)note="Couldn't find that road, so here's "+town+". Drag the map to the spot.";
+      }
+      // The same street often comes back once per block; one per suburb is enough.
+      const seen=new Set();d=d.filter(x=>{const k=pinLabel(x);if(seen.has(k))return false;seen.add(k);return true}).slice(0,5);
+      $("pinMsg").textContent=d.length?note:"Nothing found. Try a road and town, e.g. Pitt St Sydney, or a town on its own.";
       d.forEach(x=>{
-        const li=document.createElement("li"),b=document.createElement("button");b.type="button";b.textContent=x.display_name;
-        b.onclick=()=>{pinMap.setView([+x.lat,+x.lon],x.type==="city"||x.type==="town"||x.type==="administrative"?14:17);ul.hidden=true};
+        const li=document.createElement("li"),b=document.createElement("button");b.type="button";b.textContent=pinLabel(x);
+        b.onclick=()=>{pinMap.setView([+x.lat,+x.lon],pinZoom(x));ul.hidden=true};
         li.append(b);ul.append(li);
       });
       ul.hidden=!d.length;
@@ -1315,7 +1355,7 @@
   function showQR(open){
     $("qrBox").hidden=!open;$("qrBtn").setAttribute("aria-expanded",open);$("qrBtn").textContent=open?"Hide":"More ways";
     if(open){
-      const t=shareText(),both=t+" "+SITE,e=encodeURIComponent;
+      const t=shareText(),both=t+"\n\n"+SITE,e=encodeURIComponent;
       $("shWhatsapp").href="https://wa.me/?text="+e(both);
       $("shFacebook").href="https://www.facebook.com/sharer/sharer.php?u="+e(SITE);
       $("shMessenger").href="fb-messenger://share/?link="+e(SITE);
@@ -1327,7 +1367,7 @@
   $("shareLink").onfocus=()=>$("shareLink").select();
   // Copy that can't hang: the clipboard API gets a second, then the old select-and-copy way.
   async function copyLink(){
-    const text=shareText()+" "+SITE;
+    const text=shareText()+"\n\n"+SITE;
     try{
       if(!navigator.clipboard||!navigator.clipboard.writeText)throw new Error("no clipboard");
       await Promise.race([navigator.clipboard.writeText(text),new Promise((_,no)=>setTimeout(()=>no(new Error("timeout")),1000))]);
@@ -1343,7 +1383,9 @@
     // ("Permission denied") or open a system window that's easy to miss, so they get the share panel.
     // A phone that refuses gets the panel too.
     if(navigator.share&&matchMedia("(pointer: coarse)").matches){
-      try{await navigator.share({title:"Motorcycle Pothole Reporter",text:shareText(),url:SITE});return}
+      // The link goes inside the text, on its own line, with https://. Many apps (Messenger, some SMS apps) drop
+      // the separate url field or run it into the sentence, and newer bare .au names aren't always spotted as links.
+      try{await navigator.share({title:"Motorcycle Pothole Reporter",text:shareText()+"\n\n"+SITE});return}
       catch(e){if(e&&e.name==="AbortError")return}
     }
     showQR(true);$("qrBox").scrollIntoView({block:"nearest",behavior:"smooth"});
