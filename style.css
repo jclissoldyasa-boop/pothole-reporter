@@ -95,6 +95,9 @@ details summary{cursor:pointer;font-family:var(--head);text-transform:uppercase;
 .confirm{margin-top:14px;padding:14px;border:2px solid var(--sign);border-radius:8px;background:var(--field)}
 .confirm p{margin:0 0 10px;font-weight:700}
 .confirm .btn{padding:12px;font-size:.95rem}
+/* Side by side when they fit, stacked on narrow phones, never overlapping. */
+.confirm .row{grid-template-columns:repeat(auto-fit,minmax(9.5rem,1fr))}
+.confirm .row>.btn{box-sizing:border-box;min-width:0;overflow-wrap:anywhere}
 .span2{grid-column:1/-1}
 #councilBtns{margin-top:0}
 #councilBtns:empty{display:none}

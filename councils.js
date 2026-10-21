@@ -45,7 +45,7 @@ window.VIC_COUNCILS=[
 ["Mansfield Shire Council","(03) 5775 8555","council@mansfield.vic.gov.au","www.mansfield.vic.gov.au"],
 ["Maribyrnong City Council","(03) 9688 0200","email@maribyrnong.vic.gov.au","www.maribyrnong.vic.gov.au"],
 ["Maroondah City Council","1300 882 233","maroondah@maroondah.vic.gov.au","www.maroondah.vic.gov.au"],
-["Melbourne City Council","(03) 9658 9658","","www.melbourne.vic.gov.au/contactus"],
+["Melbourne City Council","(03) 9658 9658","enquiries@melbourne.vic.gov.au","www.melbourne.vic.gov.au/contactus"],
 ["Melton City Council","(03) 9747 7200","csu@melton.vic.gov.au","www.melton.vic.gov.au"],
 ["Merri-bek City Council","(03) 9240 1111","info@merri-bek.vic.gov.au","www.merri-bek.vic.gov.au"],
 ["Mildura Rural City Council","(03) 5018 8100","mrcc@mildura.vic.gov.au","www.mildura.vic.gov.au"],
