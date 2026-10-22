@@ -148,7 +148,7 @@
   }
   function classify(q){
     const st=stateOf(q),council=guessCouncil(q),r=norm(q.road),ref=arterialRef(q.ref,st),rn=roadName(st);
-    if(!r)return{auth:"check",why:"Road name not found yet"};
+    if(!r)return{auth:"check",why:roadOptions(q).length?"Road name not found. Pick it under Which road?":"Road name not found yet"};
     if(!st)return{auth:"check",why:q.state?"Outside the states and territories we know. Check who manages this road":"Couldn't tell which state this is yet"};
     // Canberra has no councils: the ACT Government looks after every road.
     if(st==="act")return{auth:"road",why:"The ACT Government looks after every road in the ACT"};
@@ -182,7 +182,7 @@
   const wait=ms=>new Promise(r=>setTimeout(r,ms));
   // Council boundary and nearby roads' route numbers (OpenStreetMap via Overpass).
   async function areaLookup(q){
-    const ql="[out:json][timeout:10];is_in("+q.lat+","+q.lng+")->.a;rel(pivot.a)[boundary=administrative][admin_level~\"^(4|6)$\"];out tags;way(around:30,"+q.lat+","+q.lng+")[highway][name];out tags;";
+    const ql="[out:json][timeout:10];is_in("+q.lat+","+q.lng+")->.a;rel(pivot.a)[boundary=administrative][admin_level~\"^(4|6)$\"];out tags;way(around:30,"+q.lat+","+q.lng+")[highway][name];out tags geom;";
     // The public server is often busy for a moment, so try twice.
     for(let tries=0;tries<2;tries++){
       if(tries)await wait(1500);
@@ -197,7 +197,7 @@
         const areas=rels.filter(e=>e.tags.admin_level==="6"&&e.tags.name);
         const known=e=>{const k=st+":"+coreName(e.tags.name);return CINFO[RENAMED[k]||k]};
         const area=areas.find(known)||areas[0];
-        return{council:area?area.tags.name:"",st,ways:els.filter(e=>e.type==="way"&&e.tags).map(e=>e.tags)};
+        return{council:area?area.tags.name:"",st,ways:els.filter(e=>e.type==="way"&&e.tags).map(e=>({tags:e.tags,geom:e.geometry||[]}))};
       }catch(e){}finally{clearTimeout(t)}
     }
     return null;
@@ -206,7 +206,8 @@
   // that into 5 km tiles in dtp/; a missing tile means no VicRoads road within about 60 m of anywhere in it.
   // q.dtp lists the nearest VicRoads road sections within 80 m: [metres, [names], route number].
   const dtpTiles=new Map();
-  const needsDtp=q=>stateOf(q)==="vic"&&!q.dtpDone&&(q.dtpTries||0)<4;
+  // Also checked when the state is unknown (lookups down): the tiles only hold Victorian roads, so elsewhere finds nothing.
+  const needsDtp=q=>(stateOf(q)==="vic"||!stateOf(q))&&!q.dtpDone&&(q.dtpTries||0)<4;
   function dtpTile(lat,lng){
     const k=Math.floor(lng*20)+"_"+Math.floor(lat*20);
     if(!dtpTiles.has(k))dtpTiles.set(k,fetch("dtp/"+k+".json").then(r=>r.status===404?{n:[],s:[]}:r.ok?r.json():Promise.reject(new Error("http "+r.status))).catch(e=>{dtpTiles.delete(k);throw e}));
@@ -227,6 +228,8 @@
         if(best<=80)near.push([Math.round(best),seg[0].map(i=>t.n[i]).filter(Boolean),seg[1]||""]);
       });
       q.dtp=near.sort((a,b)=>a[0]-b[0]).slice(0,6);q.dtpDone=true;
+      // A VicRoads road this close means Victoria, even when the other lookups couldn't say.
+      if(!stateOf(q)&&q.dtp[0]&&q.dtp[0][0]<=20)q.st="vic";
     }catch(e){q.dtpTries=(q.dtpTries||0)+1}
   }
   // Queensland's own road lookup (QLDTraffic) names the Transport and Main Roads office for a spot and its email.
@@ -247,56 +250,126 @@
     }catch(e){q.qldTries=(q.qldTries||0)+1}finally{clearTimeout(t)}
   }
   // A report gets a few tries at the council lookup across app opens before we stop asking.
-  const needsArea=q=>!q.areaDone&&(q.areaTries||0)<4;
+  // Reports from before the nearby-roads list are asked again if they still have no road name.
+  const needsArea=q=>(!q.areaDone||(!q.road&&!q.nearRoads))&&(q.areaTries||0)<4;
   function useArea(q,area){
     if(!area){q.areaTries=(q.areaTries||0)+1;return}
     q.areaDone=true;
     if(area.st)q.st=area.st;
     const st=stateOf(q);
     if(area.council&&!q.councilSet){q.council=area.council;const sub=norm(q.place);if(sub&&st)S.suburbCouncil[st+"|"+sub]=area.council}
-    const r=norm(q.road);
-    const named=area.ways.filter(w=>w.highway!=="service"&&r&&norm(w.name)===r);
-    const withRef=named.find(w=>arterialRef(w.ref,st));
-    q.ref=withRef?withRef.ref:"";
-    q.hw=(named[0]||{}).highway||"";
+    q.nearRoads=nearRoads(q,area.ways);
+  }
+  // Named roads within 30 m of a report, best match first: [metres, name, route number, highway type].
+  // Where two roads are about as close (an intersection), the one running the way the rider was going wins.
+  const NOT_ROAD=/^(footway|cycleway|path|steps|pedestrian|bridleway|corridor|platform|proposed|construction|elevator)$/;
+  function nearRoads(q,ways){
+    const lat=+q.lat,lng=+q.lng,kx=111320*Math.cos(lat*Math.PI/180),ky=110540,best={};
+    ways.forEach(w=>{
+      const t=w.tags,g=w.geom;if(NOT_ROAD.test(t.highway)||g.length<2)return;
+      let m=Infinity,b=null;
+      for(let i=1;i<g.length;i++){
+        const ax=(g[i-1].lon-lng)*kx,ay=(g[i-1].lat-lat)*ky,dx=(g[i].lon-g[i-1].lon)*kx,dy=(g[i].lat-g[i-1].lat)*ky,l=dx*dx+dy*dy;
+        const u=l?Math.max(0,Math.min(1,-(ax*dx+ay*dy)/l)):0,d=Math.hypot(ax+u*dx,ay+u*dy);
+        if(d<m){m=d;b=(Math.atan2(dx,dy)*180/Math.PI+360)%360}
+      }
+      let s=m+(t.highway==="service"?10:0);
+      if(q.bearing!=null&&b!=null){const a=((q.bearing-b)%180+180)%180;if(Math.min(a,180-a)>35)s+=12}
+      const k=norm(t.name),o=best[k];
+      if(!o||s<o.s)best[k]={s,m,name:t.name,ref:t.ref||(o&&o.ref)||"",hw:t.highway};
+      else if(!o.ref&&t.ref)o.ref=t.ref;
+    });
+    return Object.values(best).sort((a,b)=>a.s-b.s).slice(0,6).map(o=>[Math.round(o.m),o.name,o.ref,o.hw]);
+  }
+  // Route number and road type of the report's road, from the nearby roads.
+  function roadRef(q){
+    const st=stateOf(q),r=norm(q.road);
+    const named=(q.nearRoads||[]).filter(n=>n[3]!=="service"&&r&&norm(n[1])===r);
+    const withRef=named.find(n=>arterialRef(n[2],st));
+    q.ref=withRef?withRef[2]:"";
+    q.hw=(named[0]||[])[3]||"";
+  }
+  // Nominatim had no road name: take the nearest road OpenStreetMap has within 25 m, else VicRoads' list within 20 m.
+  function fillRoad(q){
+    if(q.road||q.roadSet)return;
+    const o=(q.nearRoads||[]).find(n=>n[0]<=25),v=(q.dtp||[]).find(d=>d[0]<=20&&d[1].length);
+    const name=o?o[1]:v?titleCase(v[1][0]):"";
+    if(name){q.road=name;q.roadGuess=true}
+  }
+  // Road names for "Which road?": OpenStreetMap's nearby roads, then VicRoads' nearby roads.
+  function roadOptions(q){
+    const all=(q.nearRoads||[]).map(n=>n[1]).concat(...(q.dtp||[]).map(d=>d[1].map(titleCase)));
+    return all.filter((n,j)=>n&&all.findIndex(x=>sameRoad(x,n))===j).slice(0,5);
+  }
+  // One Nominatim request at a time, at most one a second (its rule). A failed or slow one gets one more try.
+  let nomQ=Promise.resolve();
+  function nominatim(q,zoom){
+    const url="https://nominatim.openstreetmap.org/reverse?format=jsonv2&addressdetails=1&zoom="+zoom+"&lat="+q.lat+"&lon="+q.lng;
+    const p=nomQ.then(async()=>{
+      for(let tries=0;;tries++){
+        const gap=1100-(Date.now()-lastLookup);if(gap>0)await wait(gap);
+        lastLookup=Date.now();
+        const ctl=new AbortController(),t=setTimeout(()=>ctl.abort(),8000);
+        try{
+          const r=await fetch(url,{headers:{"Accept-Language":"en-AU"},signal:ctl.signal});
+          if(!r.ok)throw new Error("http "+r.status);
+          return await r.json();
+        }catch(e){if(tries)throw e}finally{clearTimeout(t)}
+        await wait(2000);
+      }
+    });
+    nomQ=p.catch(()=>{});
+    return p;
   }
   async function lookup(q){
     if(!navigator.onLine){q.lookup="offline";applyClass(q);return false}
     const areaP=areaLookup(q);
-    const gap=1100-(Date.now()-lastLookup);if(gap>0)await wait(gap);
-    lastLookup=Date.now();
     try{
-      const url="https://nominatim.openstreetmap.org/reverse?format=jsonv2&addressdetails=1&zoom=17&lat="+q.lat+"&lon="+q.lng;
-      const r=await fetch(url,{headers:{"Accept-Language":"en-AU"}});
-      if(!r.ok)throw new Error("http "+r.status);
-      const d=await r.json();const a=d.address||{};
-      const road=a.road||a.pedestrian||a.residential||"";
+      const d=await nominatim(q,17);const a=d.address||{};
+      const roadOf=a=>a.road||a.pedestrian||a.residential||"";
+      let road=roadOf(a);
+      // Zoom 17 sometimes lands on a building or park with no street. Zoom 16 looks at streets only.
+      if(!road)road=roadOf((await nominatim(q,16).catch(()=>({}))).address||{});
       q.state=a.state||"";
       const sc=stateCode(a["ISO3166-2-lvl4"])||stateCode(a.state);if(sc)q.st=sc;
       q.place=a.suburb||a.town||a.village||a.hamlet||"";
       q.suburb=q.place||a.city_district||a.city||"";
       q.postcode=a.postcode||"";
-      if(road&&!q.roadSet)q.road=road;
-      useArea(q,await areaP);
-      if(needsQld(q))await qldOffice(q);
-      if(needsDtp(q))await vicRoadCheck(q);
-      if(!road){q.lookup="none";applyClass(q);return false}
-      q.lookup="done";applyClass(q);return true;
-    }catch(e){useArea(q,await areaP);q.lookup="failed";applyClass(q);return false}
+      if(road&&!q.roadSet){q.road=road;delete q.roadGuess}
+      q.lookup=road?"done":"none";
+    }catch(e){q.lookup="failed";q.lookTries=(q.lookTries||0)+1}
+    useArea(q,await areaP);
+    if(needsQld(q))await qldOffice(q);
+    if(needsDtp(q))await vicRoadCheck(q);
+    fillRoad(q);roadRef(q);
+    if(q.lookup==="none"){if(q.road)q.lookup="done";else q.roadTries=(q.roadTries||0)+1}
+    applyClass(q);return q.lookup==="done";
   }
+  // Still no road name after every source: try again on later app opens, a few times.
+  const needsRoad=q=>q.lookup==="none"&&!q.road&&!q.roadSet&&(q.roadTries||0)<4;
+  const needsLookup=q=>q.lookup!=="pending"&&((q.lookup!=="done"&&q.lookup!=="none")||needsRoad(q)||needsArea(q)||needsQld(q)||needsDtp(q));
+  let lookingUp=false;
   async function lookupMissing(){
-    const todo=S.queue.filter(q=>(q.lookup!=="done"&&q.lookup!=="none")||needsArea(q)||needsQld(q)||needsDtp(q));
+    if(lookingUp)return;
+    const todo=S.queue.filter(needsLookup);
     if(!todo.length)return;
+    lookingUp=true;
     $("lookupBtn").disabled=true;$("lookupBtn").textContent="Looking up…";
-    for(const q of todo){
-      // Only VicRoads' list still to check: no need to look the road up again.
-      if(q.lookup==="done"&&!needsArea(q)&&!needsQld(q)&&needsDtp(q)){await vicRoadCheck(q);applyClass(q);save();renderQueue();continue}
-      q.lookup="pending";renderQueue();await lookup(q);save();renderQueue()}
-    renderCouncils();
-    $("lookupBtn").disabled=false;$("lookupBtn").textContent="Retry lookups";
+    try{
+      for(const q of todo){
+        // Only VicRoads' list still to check: no need to look the road up again.
+        if(q.lookup==="done"&&!needsArea(q)&&!needsQld(q)&&needsDtp(q)){await vicRoadCheck(q);applyClass(q);save();renderQueue();continue}
+        q.lookup="pending";renderQueue();await lookup(q);save();renderQueue()}
+      renderCouncils();
+    }finally{
+      lookingUp=false;
+      $("lookupBtn").disabled=false;$("lookupBtn").textContent="Retry lookups";
+    }
   }
   $("lookupBtn").onclick=lookupMissing;
   window.addEventListener("online",()=>{lookupMissing();shareMissing();flushUnshare()});
+  // Patchy signal on a ride: keep quietly retrying while the app is open (each report up to 6 times this way).
+  setInterval(()=>{if(navigator.onLine&&S.queue.some(q=>needsLookup(q)&&(q.lookTries||0)<6))lookupMissing()},60000);
 
   // ---------- details ----------
   [["myName","name"],["myPhone","phone"],["myEmail","email"]].forEach(([el,k])=>{
@@ -579,6 +652,7 @@
       const why=document.createElement("div");why.className="why"+(q.auth==="check"?" warn":"");why.textContent=q.why||"";
       meta.append(st,badge,sub,why);
       if(q.est){const tg=document.createElement("span");tg.className="tag est";tg.textContent="Estimated location";meta.append(tg)}
+      if(q.roadGuess&&!q.roadSet){const tg=document.createElement("span");tg.className="tag";tg.textContent="Nearest road on the map";tg.title="The road lookup didn't name it, so this is the closest road. Change it under Details if it's wrong";meta.append(tg)}
       if(q.other){const tg=document.createElement("span");tg.className="tag";tg.textContent="Another rider's, you confirmed";meta.append(tg)}
       if(q.emailed){
         const em=document.createElement("div");em.className="emailed";
@@ -610,19 +684,30 @@
         const b=document.createElement("button");b.type="button";b.className="chip";b.textContent=l;b.setAttribute("aria-pressed",q.auth===v);
         b.onclick=()=>{q.auth=v;q.authSet=true;q.why="You chose this";save();renderQueue(q.id)};aw.appendChild(b);
       });
+      // One tap to name the road from the roads around the spot.
+      const names=roadOptions(q),pick=document.createElement("div");
+      if(names.length&&(!q.road||q.roadGuess||names.some(n=>!sameRoad(n,q.road)))){
+        const lp=document.createElement("label");lp.textContent=!q.road||q.roadGuess?"Which road?":"Nearby roads";
+        const pw=document.createElement("div");pw.className="chips";
+        names.forEach(n=>{
+          const b=document.createElement("button");b.type="button";b.className="chip";b.textContent=n;b.setAttribute("aria-pressed",!q.roadGuess&&sameRoad(n,q.road));
+          b.onclick=()=>{q.road=n;q.roadSet=true;delete q.roadGuess;q.authSet=false;roadRef(q);applyClass(q);save();renderQueue(q.id)};pw.appendChild(b);
+        });
+        pick.append(lp,pw);
+      }
       const r=document.createElement("div");r.className="row";
       [["road","Road","e.g. Western Fwy"],["near","Near","e.g. Coburns Rd"],["council","Council","e.g. Shire of Moorabool"]].forEach(([k,l,ph])=>{
         const w=document.createElement("div");if(k==="council")w.className="span2";const lab=document.createElement("label");lab.textContent=l;
         const inp=document.createElement("input");inp.value=q[k]||"";inp.placeholder=ph;inp.setAttribute("aria-label",l+" for pothole "+(i+1));
         if(k==="council")inp.onchange=renderCouncils;
-        inp.oninput=()=>{q[k]=k==="council"?inp.value.trim():inp.value;if(k==="road"){q.roadSet=true;q.authSet=false;applyClass(q)}if(k==="council"){q.councilSet=!!q.council;applyClass(q)}save();
+        inp.oninput=()=>{q[k]=k==="council"?inp.value.trim():inp.value;if(k==="road"){q.roadSet=true;delete q.roadGuess;q.authSet=false;roadRef(q);applyClass(q)}if(k==="council"){q.councilSet=!!q.council;applyClass(q)}save();
           st.textContent=title();badge.className="auth "+q.auth;badge.textContent=authLabel(q);why.textContent=q.why||"";why.className="why"+(q.auth==="check"?" warn":"");updateButtons()};
         w.append(lab,inp);r.appendChild(w);
       });
       const l1=document.createElement("label");l1.textContent="Direction";
       const l2=document.createElement("label");l2.textContent="Position";
       const l3=document.createElement("label");l3.textContent="Size";
-      box.append(l0,aw,r,l1,chipRow(q,"dir",DIRS,d=>d[0]),l2,chipRow(q,"pos",POS),l3,chipRow(q,"size",SIZE));
+      box.append(l0,aw,pick,r,l1,chipRow(q,"dir",DIRS,d=>d[0]),l2,chipRow(q,"pos",POS),l3,chipRow(q,"size",SIZE));
       li.append(head,box);ol.appendChild(li);
     });
     updateButtons();
@@ -649,7 +734,7 @@
     });
     syncCouncils();setUrgent();
     $("clearBtn").hidden=$("swipeHint").hidden=!S.queue.length;if(!S.queue.length)$("clearConfirm").hidden=true;
-    $("lookupBtn").hidden=!S.queue.some(q=>q.lookup==="failed"||q.lookup==="offline"||(q.lookup==="done"&&(needsArea(q)||needsQld(q)||needsDtp(q))));
+    $("lookupBtn").hidden=!S.queue.some(needsLookup);
   }
   // The footer's "urgent danger" number is the road authority for wherever you last logged a pothole.
   // Before the first report, the phone's time zone is a good guess at the state.
@@ -1400,7 +1485,7 @@
   renderQueue();renderCouncils();renderHistory();renderStats();save();askSent();
   if(movedIn)setTimeout(()=>toast("Moved to motopotholereporter.au with your reports. Reinstall the app from here so your icon opens the new address.",null,9000),400);
   fetchStats();shareMissing();flushUnshare();
-  if(S.queue.some(q=>q.lookup==="failed"||q.lookup==="offline"||needsArea(q)||needsQld(q)||needsDtp(q)))lookupMissing();
+  if(S.queue.some(needsLookup))lookupMissing();
 
   // ---------- one tap from the home screen ----------
   // The "Log a pothole" app shortcut (and any link ending ?report=1) logs one as soon as the app opens.
